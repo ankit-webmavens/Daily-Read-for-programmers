@@ -1,170 +1,175 @@
 <?php
-// 2026-08-13 09:29:24
+// 2026-08-13 10:07:28
 
 /* PHP
-Closures in PHP
+**Lambdas in PHP**
 
-Closures are anonymous functions that have access to their own scope, the scope in which they were created, and can be used later in the program. They can also capture variables from the outer scope and use them even when the outer function has finished executing. Closures can be used to create higher-order functions and implement functional programming concepts in PHP. They can also be used as objects and have methods.
+Lambdas in PHP are anonymous functions that can be used to pass functions as arguments to other functions, return functions as values from other functions, or store functions in variables. They are similar to closures in other languages. Lambdas can be used with any context where a function is required. They are more memory efficient as compared to named functions in some cases.
 
 ```php
-function outer_function($name) {
-    $greeting = "Hello, ";
-    $closure = function() use ($greeting, $name) {
-        // using variables from outer scope
-        echo $greeting . $name . "\n";
-    };
-    return $closure;
-}
+// Lambda function to square a number
+$numbers = array(1, 2, 3, 4, 5);
+$mapFunc = function($num) { 
+    // This is the implementation of the square function
+    return $num * $num; 
+};
+$squared = array_map($mapFunc, $numbers);
 
-// create a closure
-$closure_hello_john = outer_function("John");
-$closure_hello_john(); // outputs "Hello, John"
-
-$closure_hello_mark = outer_function("Mark");
-$closure_hello_mark(); // outputs "Hello, Mark"
+// Print the squared numbers
+print_r($squared);
 ```
+
+This will output: `Array ( [0] => 1 [1] => 4 [2] => 9 [3] => 16 [4] => 25 )`
 */
 
 /* Laravel
-**Eager Loading**
+**Middleware in Laravel**
 
-Eager loading is a feature in Laravel that allows you to load related models and their relationships with a single database query. This improves performance by reducing the number of database queries required to load data.
+Middleware is a great way to perform operations before or after an application request is handled by a route. Laravel's middleware system allows you to check for user authentication, rate limiting, and more.
 
-To enable eager loading, we can use the with() method on a query builder instance and pass in the related models. For example:
+Middleware are classes that contain a handle method. They can be attached to routes individually by specifying middleware, or globally by appending them to a specific group of routes.
 
+Here is an example of a middleware class:
+ 
 ```php
-$posts = App\Post::with('comments', 'author')->get();
-```
+// app/Http/Middleware/ExampleMiddleware.php
 
-In this example, we're loading two relationships: comments and author.
+namespace App\Http\Middleware;
 
-If these relationships are defined on the Post model like so:
+use Closure;
+use Illuminate\Contracts\Session\Session;
 
-```php
-// app/Models/Post.php
-
-namespace App\Models;
-
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use App\Models\User;
-
-class Post extends Model
+class ExampleMiddleware
 {
-    use HasFactory;
+    private $session;
 
-    public function author()
+    public function __construct(Session $session)
     {
-        return $this->belongsTo(User::class);
+        $this->session = $session;
     }
 
-    public function comments()
+    public function handle($request, Closure $next)
     {
-        return $this->hasMany(Comment::class);
+        // You can do any processing here, like checking user data
+        // In this case, we check if the user is authenticated
+        if ($this->session->has('user_id')) {
+            // User is authenticated
+        } else {
+            // Return an HTTP response
+            return redirect("/login");
+        }
+
+        // Pass the request to the next middleware (if any)
+        return $next($request);
     }
 }
 ```
-
-We can then access the related models using the getRelations() method:
+Then in the Kernel.php, we register the middleware at the bottom of the kernel class like so:
 
 ```php
-$firstPost = $posts[0];
+// app/Http/Kernel.php
 
-// Load all comments for the first post
-$comments = $firstPost->comments;
-
-// Load the author of the first post
-$user = $firstPost->author;
+protected $routeMiddleware = [
+    'auth' => \App\Http\Middleware\Authenticate::class,
+    'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
+    'bindings' => \Illuminate\Routing\Middleware\SubstituteBindings::class,
+    'cache.headers' => \Illuminate\Http\Middleware\SetCacheHeaders::class,
+    'can' => \Illuminate\Auth\Middleware\Authorize::class,
+    'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
+    'signed' => \Illuminate\Routing\Middleware\ValidateSignature::class,
+    'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
+    'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
+    'example.middleware' => \App\Http\Middleware\ExampleMiddleware::class,
+];
 ```
-
-This approach makes it easier to manage complex relationships between models, as well as improving performance by reducing the number of database queries.
 */
 
 /* MySQL
-**Triggers in MySQL**
+**Indexing MySQL Columns**
 
-Triggers in MySQL are database level stored procedures that are automatically executed in response to certain events such as insert, update or delete operations on a table. They can be used to enforce data consistency, perform complex operations, and increase data integrity. Triggers are especially useful when you need to perform some operation before or after an alteration on a table. They are useful in cases where direct database manipulation is involved such as updating tables in an online application. Triggers can also be used to track changes made to the data in a database.
-
-**Example of MySQL Trigger**
+Indexing MySQL columns improves query performance by allowing the database to quickly locate data. An index is a data structure that speeds up data retrieval operations. When a query is executed, MySQL can use the index to quickly locate the required data. This reduces the time it takes to retrieve data. Indexing can also improve data insertion and update operations. However, indexing can slow down write operations.
 
 ```sql
-CREATE TABLE customers (
-  id INT PRIMARY KEY,
+CREATE TABLE employees (
+  employee_id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(255),
   email VARCHAR(255)
 );
 
--- Before update trigger to send email notifications
-DELIMITER //
-CREATE TRIGGER send_email_notification
-BEFORE UPDATE ON customers
-FOR EACH ROW
-BEGIN
-  -- Send email to the customer and administrator
-  DECLARE exitHandler INT DEFAULT 0;
-  SIGNAL SQLSTATE '02000' SET MESSAGE_TEXT = 'Email sent';
-END;//
-DELIMITER ;
+-- Create a simple index on the email column
+CREATE INDEX idx_email ON employees(email);
 
--- Update a customer
-UPDATE customers SET name = 'John Doe' WHERE id = 1;
+-- Drop the index
+DROP INDEX idx_email ON employees;
 
--- Show the new value in customers table after update
-SELECT * FROM customers WHERE id = 1;
+-- Create a composite index on multiple columns
+CREATE INDEX idx_email_name ON employees(email, name);
 
--- Drop the trigger
-DROP TRIGGER send_email_notification;
-
--- Update again to see the new value
-UPDATE customers SET name = 'Jane Doe' WHERE id = 1;
+-- Create a unique index on a column
+CREATE UNIQUE INDEX idx_email ON employees(email);
 ```
 */
 
 /* JavaScript
-**Closures**
+Closures in JavaScript
 
-Closures are a fundamental concept in JavaScript that involves the creation of a function in which some of the variables of the outer function's scope are accessible. This can be useful for creating private variables, returning functions from functions, and creating callbacks. A closure is formed when a function has access to its own scope and the scope of the outer function in which it was created. Closures are often used in real-world applications, such as event handlers and modules.
+A closure is a function that has access to its own local scope and the scope of its outer functions. This allows a function to remember variables from its surrounding scope even when it is invoked outside of that scope. A classic example of this is a function returned by the previous function that uses the outer function's variables.
 
 ```javascript
-// An example of a closure in JavaScript
 function outerFunction() {
-    let privateVariable = "private";  // a private variable
-    return function innerFunction() {
-        console.log(privateVariable);  // accessing the private variable
-    };
+  var name = 'John Doe';
+  function innerFunction() {
+    console.log(name);  // accessing outer function's variable
+  }
+  return innerFunction;
 }
 
-let innerFunc = outerFunction();
-innerFunc();  // prints "private"
+var sayName = outerFunction();
+sayName();  // outputs: John Doe
 ```
+
+In this code, `innerFunction` is returned from `outerFunction` and `sayName` takes its place. So even though `outerFunction` is called once and goes out of scope, `sayName` continues to have access to the `name` variable in the outer function's scope. This demonstrates the concept of a closure.
 */
 
 /* AI
-**Transfer Learning in Machine Learning**
+Topic: Building a Simple Neural Network for Image Classification using Keras
 
-Transfer learning is a machine learning technique where a pre-trained model is adapted for a new task, leveraging the knowledge and representation learned from the original task. This approach can be beneficial when dealing with limited data or computational resources. By reusing pre-trained models, transfer learning reduces the time and effort required to train a model for a specific task. It's widely used in NLP, image classification, and object detection tasks.
+Building a simple neural network for image classification involves training a model to recognize patterns in images and assign labels to them. This can be achieved using Keras, a popular deep learning library in Python. In this example, we'll create a simple neural network that can classify handwritten digits using the MNIST dataset. We'll use the Sequential API to build the model and compile it with a suitable loss function, optimizer, and evaluation metrics.
 
-```python
-from tensorflow import keras
-from tensorflow.keras import layers
+```
+# Import necessary libraries
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Conv2D, MaxPooling2D
+from keras.datasets import mnist
+from keras.utils import to_categorical
 
-# Load the pre-trained VGG16 model
-base_model = keras.applications.VGG16(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+# Load MNIST dataset
+(X_train, y_train), (X_test, y_test) = mnist.load_data()
 
-# Freeze the base model layers
-for layer in base_model.layers:
-    layer.trainable = False
+# Preprocess images
+X_train = X_train.reshape(-1, 28, 28, 1)
+X_test = X_test.reshape(-1, 28, 28, 1)
+X_train = X_train.astype('float32') / 255
+X_test = X_test.astype('float32') / 255
 
-# Add custom layers to the model
-x = base_model.output
-x = layers.Flatten()(x)
-x = layers.Dense(64, activation='relu')(x)
-x = layers.Dense(10, activation='softmax')(x)
+# One-hot encode labels
+y_train = to_categorical(y_train, 10)
+y_test = to_categorical(y_test, 10)
 
-# Define the new model
-model = keras.Model(inputs=base_model.input, outputs=x)
+# Build the model
+model = Sequential()
+model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+model.add(Flatten())
+model.add(Dense(128, activation='relu'))
+model.add(Dropout(0.2))
+model.add(Dense(10, activation='softmax'))
 
 # Compile the model
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+# Train the model
+model.fit(X_train, y_train, batch_size=64, epochs=10, verbose=1)
 ```
 */
