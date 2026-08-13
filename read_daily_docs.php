@@ -1,198 +1,170 @@
 <?php
-// 2026-08-13 07:33:03
+// 2026-08-13 09:29:24
 
 /* PHP
-**Closures in PHP**
+Closures in PHP
 
-Closures in PHP are anonymous functions which can be used as objects and variables can be passed into them. They have access to their environment and can capture variables from there. This allows them to be used for various purposes such as callbacks, events, and objects. Closures can be used as methods of objects or can be created on their own. This allows for flexible and dynamic programming.
+Closures are anonymous functions that have access to their own scope, the scope in which they were created, and can be used later in the program. They can also capture variables from the outer scope and use them even when the outer function has finished executing. Closures can be used to create higher-order functions and implement functional programming concepts in PHP. They can also be used as objects and have methods.
 
 ```php
-// Defining a closure
-$closure = function($name) {
-    // This will print the name passed to the closure
-    echo "Hello $name";
-};
-
-// Calling the closure
-$closure("John");  // Output: Hello John
-
-// Creating a closure as a method of an object
-class Greeter {
-    function sayHello($name) {
-        // This closure will print the name passed to it when called
-        $this->hello = function() use ($name) {
-            echo "Hello $name";
-        };
-    }
+function outer_function($name) {
+    $greeting = "Hello, ";
+    $closure = function() use ($greeting, $name) {
+        // using variables from outer scope
+        echo $greeting . $name . "\n";
+    };
+    return $closure;
 }
 
-$greeter = new Greeter();
-$greeter->sayHello("John");
-$greeter->hello();  // Output: Hello John
+// create a closure
+$closure_hello_john = outer_function("John");
+$closure_hello_john(); // outputs "Hello, John"
 
-// Using a closure as a callback
-array_map(function($value) {
-    // This will square every value in the array
-    return $value * $value;
-}, array(1, 2, 3, 4, 5));
+$closure_hello_mark = outer_function("Mark");
+$closure_hello_mark(); // outputs "Hello, Mark"
 ```
 */
 
 /* Laravel
-Laravel Observers
+**Eager Loading**
 
-Laravel Observers provide a way to perform actions on a model after a certain event has occurred. This allows you to perform side effects or business logic after a model is saved or updated. For example, you could trigger an email to be sent after a new user is created. 
+Eager loading is a feature in Laravel that allows you to load related models and their relationships with a single database query. This improves performance by reducing the number of database queries required to load data.
 
-You can define an observer for a specific model by creating a class that implements the Observer interface and then defining methods to handle specific events. The Observer interface defines a series of methods that correspond to the different events that can occur on a model.
+To enable eager loading, we can use the with() method on a query builder instance and pass in the related models. For example:
 
 ```php
-// app/Observers/UserObserver.php
-
-namespace App\Observers;
-
-use App\Models\User;
-
-class UserObserver
-{
-    /**
-     * Handle the User "created" event.
-     *
-     * @param  \App\Models\User  $user
-     * @return void
-     */
-    public function created(User $user)
-    {
-        // Send a welcome email to the user
-        \Mail::to($user->email)->send(new WelcomeEmail($user));
-    }
-
-    /**
-     * Handle the User "updated" event.
-     *
-     * @param  \App\Models\User  $user
-     * @return void
-     */
-    public function updated(User $user)
-    {
-        // Log any changes made to the user
-        \Log::info('User updated:', ['user' => $user]);
-    }
-
-    // ... other methods ...
-}
+$posts = App\Post::with('comments', 'author')->get();
 ```
 
-To attach the observer to the User model, you can use the following code:
+In this example, we're loading two relationships: comments and author.
+
+If these relationships are defined on the Post model like so:
 
 ```php
-// app/Models/User.php
+// app/Models/Post.php
 
 namespace App\Models;
 
-use App\Observers\UserObserver;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\User;
 
-class User extends Authenticatable
+class Post extends Model
 {
-    // ... other methods ...
-    
-    protected static function boot()
+    use HasFactory;
+
+    public function author()
     {
-        parent::boot();
-        static::observe(UserObserver::class);
+        return $this->belongsTo(User::class);
+    }
+
+    public function comments()
+    {
+        return $this->hasMany(Comment::class);
     }
 }
 ```
+
+We can then access the related models using the getRelations() method:
+
+```php
+$firstPost = $posts[0];
+
+// Load all comments for the first post
+$comments = $firstPost->comments;
+
+// Load the author of the first post
+$user = $firstPost->author;
+```
+
+This approach makes it easier to manage complex relationships between models, as well as improving performance by reducing the number of database queries.
 */
 
 /* MySQL
-**Transaction in MySQL**
+**Triggers in MySQL**
 
-A transaction in MySQL refers to a sequence of operations performed as a single, all-or-nothing unit of work. This ensures that the data remains consistent and free from partial modifications in case of errors or system crashes. To use transactions, the 'START TRANSACTION' statement should be executed before the operations. It is recommended to use 'ROLLBACK' for undoing operations in case of errors. When no errors occur the 'COMMIT' statement is used to save the changes. This helps maintain data integrity.
+Triggers in MySQL are database level stored procedures that are automatically executed in response to certain events such as insert, update or delete operations on a table. They can be used to enforce data consistency, perform complex operations, and increase data integrity. Triggers are especially useful when you need to perform some operation before or after an alteration on a table. They are useful in cases where direct database manipulation is involved such as updating tables in an online application. Triggers can also be used to track changes made to the data in a database.
+
+**Example of MySQL Trigger**
 
 ```sql
--- Start a new transaction
-START TRANSACTION;
+CREATE TABLE customers (
+  id INT PRIMARY KEY,
+  name VARCHAR(255),
+  email VARCHAR(255)
+);
 
--- Perform some operations
-INSERT INTO customers (name, email) VALUES ('John Doe', 'john@example.com');
-INSERT INTO orders (customer_id, order_date) VALUES (LAST_INSERT_ID(), '2022-01-01');
+-- Before update trigger to send email notifications
+DELIMITER //
+CREATE TRIGGER send_email_notification
+BEFORE UPDATE ON customers
+FOR EACH ROW
+BEGIN
+  -- Send email to the customer and administrator
+  DECLARE exitHandler INT DEFAULT 0;
+  SIGNAL SQLSTATE '02000' SET MESSAGE_TEXT = 'Email sent';
+END;//
+DELIMITER ;
 
--- Simulate an error
-INSERT INTO orders (customer_id, order_date) VALUES (LAST_INSERT_ID(), 'wrong order date');
+-- Update a customer
+UPDATE customers SET name = 'John Doe' WHERE id = 1;
 
--- Roll back to undo the changes
-ROLLBACK;
+-- Show the new value in customers table after update
+SELECT * FROM customers WHERE id = 1;
 
--- Check if the changes are rolled back
-SELECT * FROM customers WHERE id = LAST_INSERT_ID();
-SELECT * FROM orders WHERE customer_id = LAST_INSERT_ID();
+-- Drop the trigger
+DROP TRIGGER send_email_notification;
 
--- Start a new transaction
-START TRANSACTION;
-
--- Perform the operations again
-INSERT INTO customers (name, email) VALUES ('John Doe', 'john@example.com');
-INSERT INTO orders (customer_id, order_date) VALUES (LAST_INSERT_ID(), '2022-01-01');
-
--- Commit the changes to save them
-COMMIT;
-
--- Check if the changes are committed
-SELECT * FROM customers WHERE id = LAST_INSERT_ID();
-SELECT * FROM orders WHERE customer_id = LAST_INSERT_ID();
+-- Update again to see the new value
+UPDATE customers SET name = 'Jane Doe' WHERE id = 1;
 ```
 */
 
 /* JavaScript
-Closure in JavaScript
+**Closures**
 
-A closure is a function that has access to its own scope and the scope of its outer functions, even when the outer functions have returned. This allows a closure to 'remember' variables from the outer functions and use them when needed. Closures are useful for creating private variables and encapsulating state. They can also be used for higher-order functions and to implement the Observer pattern. In a closure, variables from the outer scope are captured by the inner function, and this capture happens at the point of invocation.
+Closures are a fundamental concept in JavaScript that involves the creation of a function in which some of the variables of the outer function's scope are accessible. This can be useful for creating private variables, returning functions from functions, and creating callbacks. A closure is formed when a function has access to its own scope and the scope of the outer function in which it was created. Closures are often used in real-world applications, such as event handlers and modules.
 
 ```javascript
-functionouterFunction(a) {
-  functioninnerFunction() {
-    // innerFunction has access to a and console
-    console.log(a);
-  }
-  // outerFunction has returned, but innerFunction still knows about a
-  return innerFunction;
+// An example of a closure in JavaScript
+function outerFunction() {
+    let privateVariable = "private";  // a private variable
+    return function innerFunction() {
+        console.log(privateVariable);  // accessing the private variable
+    };
 }
 
-// create a new innerFunction with a = 10
-var myInnerFunction = outerFunction(10);
-
-// call the inner function with the captured value of a
-myInnerFunction(); // prints 10
+let innerFunc = outerFunction();
+innerFunc();  // prints "private"
 ```
 */
 
 /* AI
-Topic: Transfer Learning with Neural Networks
+**Transfer Learning in Machine Learning**
 
-Transfer learning is a technique in deep learning where a pre-trained neural network is adapted for use in a new task, often involving less training data. This approach is particularly useful when working with resource-constrained environments. The pre-trained model's weights are used as a starting point and fine-tuned for the new task. This technique helps avoid the problem of overfitting to the limited data and also allows the model to learn common features across related tasks. By leveraging pre-trained models, transfer learning enables faster development and better performance on a wide range of tasks.
+Transfer learning is a machine learning technique where a pre-trained model is adapted for a new task, leveraging the knowledge and representation learned from the original task. This approach can be beneficial when dealing with limited data or computational resources. By reusing pre-trained models, transfer learning reduces the time and effort required to train a model for a specific task. It's widely used in NLP, image classification, and object detection tasks.
 
-```
-from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras import backend as K
+```python
+from tensorflow import keras
+from tensorflow.keras import layers
 
-# Load the MobileNetV2 model pre-trained on ImageNet
-base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+# Load the pre-trained VGG16 model
+base_model = keras.applications.VGG16(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
 
-# Freeze all the layers of the base model
+# Freeze the base model layers
 for layer in base_model.layers:
     layer.trainable = False
 
-# Define a new model that adds a global average pooling layer and a few dense layers
+# Add custom layers to the model
 x = base_model.output
-x = GlobalAveragePooling2D()(x)
-x = Dense(1024, activation='relu')(x)
-x = Dense(10, activation='softmax')(x)
+x = layers.Flatten()(x)
+x = layers.Dense(64, activation='relu')(x)
+x = layers.Dense(10, activation='softmax')(x)
+
+# Define the new model
+model = keras.Model(inputs=base_model.input, outputs=x)
 
 # Compile the model
-model = Model(inputs=base_model.input, outputs=x)
-model.compile(optimizer=Adam(lr=0.001), loss='categorical_crossentropy', metrics=['accuracy'])
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 ```
 */
