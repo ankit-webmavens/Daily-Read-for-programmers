@@ -1,45 +1,38 @@
 <?php
-// 2026-08-13 06:46:17
+// 2026-08-13 06:55:41
 /*
-**Topic Name: Understanding Laravel Eloquent Subqueries**
+Topic: MySQL Indexing for Efficient Database Queries
 
-**Explanation:**
-Laravel Eloquent provides an elegant way to perform database operations in PHP. Sometimes, we need to use subqueries to achieve complex database logic. A subquery is a query nested inside another query. In this topic, we will explore how to use subqueries in Eloquent to fetch data from a database table.
+Explanation: In MySQL, indexing is a technique used to improve the performance of database queries by quickly locating specific data within a table. An index is a data structure that associates a specific value with a row in a table, allowing the database to retrieve data more efficiently. Indexing can be used on columns that are frequently used in WHERE, JOIN, and ORDER BY clauses.
 
-**Code Example:**
+Code Example:
 ```php
-// Create a model called User
-class User extends Model
-{
-    // Establish a relationship with the Post model
-    public function posts()
-    {
-        return $this->hasMany(Post::class);
-    }
-}
+// Create a table with a large number of rows
+CREATE TABLE users (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(255),
+  email VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-class Post extends Model
-{
-    // Establish a relationship with the User model
-    public function user()
-    {
-        return $this->belongsTo(User::class);
-    }
-}
+// Insert 100000 rows into the table
+SET @i = 1;
+WHILE @i <= 100000 DO
+  INSERT INTO users (name, email)
+  VALUES (CONCAT('User', @i), CONCAT('user', @i, '@example.com'));
+  SET @i = @i + 1;
+END WHILE;
 
-// Use a subquery to fetch users who have posts
-$usersWithPosts = User::has('posts')->get();
+// Create an index on the email column
+CREATE INDEX idx_email ON users (email);
 
-// Use a subquery to fetch users who have posts with a title containing 'Hello'
-$usersWithHelloPosts = User::has('posts', function ($query) {
-    $query->where('title', 'like', '%Hello%');
-})->get();
+// Run a query that uses the index
+SELECT * FROM users WHERE email = 'user10000@example.com';
 
-// Use a subquery to fetch the count of posts for each user
-$userPostCounts = User::withCount('posts')->get();
+// Explain the query to view the index usage
+EXPLAIN SELECT * FROM users WHERE email = 'user10000@example.com';
 
-// Use a subquery to fetch the average rating of posts for each user
-$userAverageRatings = User::withAverage('posts', 'rating')->get();
+// Drop the index
+DROP INDEX idx_email ON users;
 ```
-In this example, we are using the `has` method to fetch users who have posts, the `whereHas` method to fetch users who have posts with a title containing 'Hello', the `withCount` method to fetch the count of posts for each user, and the `withAverage` method to fetch the average rating of posts for each user.
 */
