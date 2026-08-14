@@ -1,175 +1,209 @@
 <?php
-// 2026-08-13 10:07:28
+// 2026-08-14 03:41:51
 
 /* PHP
-**Lambdas in PHP**
+**Topic:** PDO Prepared Statements in PHP
 
-Lambdas in PHP are anonymous functions that can be used to pass functions as arguments to other functions, return functions as values from other functions, or store functions in variables. They are similar to closures in other languages. Lambdas can be used with any context where a function is required. They are more memory efficient as compared to named functions in some cases.
+PDO prepared statements are used to prevent SQL injection attacks and improve the performance of database queries. They allow you to separate the SQL query from the data that will be used in the query. This helps to keep your code organized and makes it easier to read and understand. PDO prepared statements also cache the compiled SQL, so subsequent calls to the same query run faster.
 
 ```php
-// Lambda function to square a number
-$numbers = array(1, 2, 3, 4, 5);
-$mapFunc = function($num) { 
-    // This is the implementation of the square function
-    return $num * $num; 
-};
-$squared = array_map($mapFunc, $numbers);
+<?php
+// Connect to database
+$dsn = 'mysql:host=localhost;dbname=mydb';
+$username = 'myuser';
+$password = 'mypassword';
+try {
+    $pdo = new PDO($dsn, $username, $password);
+} catch (PDOException $e) {
+    echo 'Connection failed: ' . $e->getMessage();
+}
 
-// Print the squared numbers
-print_r($squared);
+// Prepare a SQL query
+$stmt = $pdo->prepare('SELECT * FROM users WHERE name = :name AND email = :email');
+// Bind the query parameters
+$stmt->bindParam(':name', $name);
+$stmt->bindParam(':email', $email);
+// Set the values for the parameters
+$name = 'John Doe';
+$email = 'john@example.com';
+// Execute the query
+$stmt->execute();
+// Fetch the results
+$users = $stmt->fetchAll();
+foreach ($users as $user) {
+    echo $user['id'] . ' ' . $user['name'] . ' ' . $user['email'] . "\n";
+}
+$pdo = null;
+?>
 ```
-
-This will output: `Array ( [0] => 1 [1] => 4 [2] => 9 [3] => 16 [4] => 25 )`
 */
 
 /* Laravel
-**Middleware in Laravel**
+**Laravel Eloquent Relationship - One-To-One**
 
-Middleware is a great way to perform operations before or after an application request is handled by a route. Laravel's middleware system allows you to check for user authentication, rate limiting, and more.
+Eloquent relationship in Laravel allows you to perform CRUD operations on associated models. A one-to-one relationship is established when one instance of a model is related to one instance of another model. This type of relationship is useful when a model has a separate model associated with it, such as a user having a profile.
 
-Middleware are classes that contain a handle method. They can be attached to routes individually by specifying middleware, or globally by appending them to a specific group of routes.
-
-Here is an example of a middleware class:
- 
 ```php
-// app/Http/Middleware/ExampleMiddleware.php
-
-namespace App\Http\Middleware;
-
-use Closure;
-use Illuminate\Contracts\Session\Session;
-
-class ExampleMiddleware
+// User Model
+class User extends Model
 {
-    private $session;
+    protected $fillable = [
+        'name', 'email', 'password'
+    ];
 
-    public function __construct(Session $session)
+    public function profile()
     {
-        $this->session = $session;
-    }
-
-    public function handle($request, Closure $next)
-    {
-        // You can do any processing here, like checking user data
-        // In this case, we check if the user is authenticated
-        if ($this->session->has('user_id')) {
-            // User is authenticated
-        } else {
-            // Return an HTTP response
-            return redirect("/login");
-        }
-
-        // Pass the request to the next middleware (if any)
-        return $next($request);
+        return $this->hasOne(Profile::class);
     }
 }
-```
-Then in the Kernel.php, we register the middleware at the bottom of the kernel class like so:
 
-```php
-// app/Http/Kernel.php
+// Profile Model
+class Profile extends Model
+{
+    protected $fillable = [
+        'bio', 'image'
+    ];
 
-protected $routeMiddleware = [
-    'auth' => \App\Http\Middleware\Authenticate::class,
-    'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
-    'bindings' => \Illuminate\Routing\Middleware\SubstituteBindings::class,
-    'cache.headers' => \Illuminate\Http\Middleware\SetCacheHeaders::class,
-    'can' => \Illuminate\Auth\Middleware\Authorize::class,
-    'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
-    'signed' => \Illuminate\Routing\Middleware\ValidateSignature::class,
-    'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
-    'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
-    'example.middleware' => \App\Http\Middleware\ExampleMiddleware::class,
-];
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+
+// To get a user with their profile
+$user = User::with('profile')->find(1);
+
+// To create a profile for a user
+$user->profile()->create([
+    'bio' => 'Hello, I am John Doe',
+    'image' => 'profile-image.jpg'
+]);
+
+// To get a profile by user ID
+$profile = Profile::where('user_id', 1)->first();
 ```
 */
 
 /* MySQL
-**Indexing MySQL Columns**
+Indexing in MySQL
 
-Indexing MySQL columns improves query performance by allowing the database to quickly locate data. An index is a data structure that speeds up data retrieval operations. When a query is executed, MySQL can use the index to quickly locate the required data. This reduces the time it takes to retrieve data. Indexing can also improve data insertion and update operations. However, indexing can slow down write operations.
+Indexing is a key technique used to speed up querying in database systems like MySQL. It does this by pre-organizing data in an efficient manner that allows for faster lookup, insertion, and deletion times. An index is created on one or more columns of a table and can either be a clustered index where data is physically stored in the order it appears in the index or a non-clustered index where data is stored in a random order. Creating an index can also slow down insertion and deletion of data because the index has to be updated. 
 
 ```sql
+-- Create a table without any indexes
 CREATE TABLE employees (
-  employee_id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(255),
-  email VARCHAR(255)
+    id INT AUTO_INCREMENT,
+    name VARCHAR(255),
+    position VARCHAR(255),
+    PRIMARY KEY (id)
 );
 
--- Create a simple index on the email column
-CREATE INDEX idx_email ON employees(email);
+-- Insert some data
+INSERT INTO employees (name, position) VALUES ('John Doe', 'Software Engineer');
+INSERT INTO employees (name, position) VALUES ('Jane Doe', 'Data Analyst');
+INSERT INTO employees (name, position) VALUES ('John Smith', 'Quality Assurance');
 
--- Drop the index
-DROP INDEX idx_email ON employees;
+-- Create an index on the position column
+CREATE INDEX idx_position ON employees (position);
 
--- Create a composite index on multiple columns
-CREATE INDEX idx_email_name ON employees(email, name);
+-- Create an index on the name column
+CREATE UNIQUE INDEX idx_name ON employees (name);
 
--- Create a unique index on a column
-CREATE UNIQUE INDEX idx_email ON employees(email);
+-- Now queries like this one will be faster
+SELECT * FROM employees WHERE position = 'Software Engineer';
+
+-- To drop the index you just created
+DROP INDEX idx_name ON employees;
 ```
 */
 
 /* JavaScript
-Closures in JavaScript
+**Closures with Callback Functions**
 
-A closure is a function that has access to its own local scope and the scope of its outer functions. This allows a function to remember variables from its surrounding scope even when it is invoked outside of that scope. A classic example of this is a function returned by the previous function that uses the outer function's variables.
+A closure is a function that has access to its own scope and the scope of its outer functions, even when the outer function has returned. This can be combined with callback functions to create more complex and dynamic coding solutions.
+
+When a callback function is passed to a function that uses closures, the callback function can access the variables and data of the outer function even after the outer function has returned. This can be used to create more flexibility and reusability in code.
 
 ```javascript
-function outerFunction() {
-  var name = 'John Doe';
-  function innerFunction() {
-    console.log(name);  // accessing outer function's variable
-  }
-  return innerFunction;
+function outerFunction(name, age, callback) {
+    // Create a closure with a variable and assign it a value
+    var person = {
+        name: name,
+        age: age
+    };
+
+    // Use the callback function to process the closure data
+    callback(person);
 }
 
-var sayName = outerFunction();
-sayName();  // outputs: John Doe
-```
+// Define a callback function to process the closure data
+function callbackFunction(person) {
+    // Access the person object data and use it
+    console.log('Hello, my name is ' + person.name + ' and I am ' + person.age + ' years old.');
+}
 
-In this code, `innerFunction` is returned from `outerFunction` and `sayName` takes its place. So even though `outerFunction` is called once and goes out of scope, `sayName` continues to have access to the `name` variable in the outer function's scope. This demonstrates the concept of a closure.
+// Create a new person object and pass it to the outerFunction
+outerFunction('John Doe', 30, callbackFunction);
+```
 */
 
 /* AI
-Topic: Building a Simple Neural Network for Image Classification using Keras
+**Topic: Neural Network Backpropagation Tutorial**
 
-Building a simple neural network for image classification involves training a model to recognize patterns in images and assign labels to them. This can be achieved using Keras, a popular deep learning library in Python. In this example, we'll create a simple neural network that can classify handwritten digits using the MNIST dataset. We'll use the Sequential API to build the model and compile it with a suitable loss function, optimizer, and evaluation metrics.
+Backpropagation is a fundamental algorithm used to train neural networks by minimizing the error between predicted and actual outputs. It works by iteratively adjusting the weights and biases of the network based on the error gradient. The process involves three main steps: forward pass, error calculation, and weight update. During the forward pass, the input is propagated through the network to produce the output. The error is then calculated between the predicted output and the actual output. Finally, the weight update rule is applied to adjust the weights and biases of the network.
 
-```
+```python
 # Import necessary libraries
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten
-from keras.layers import Conv2D, MaxPooling2D
-from keras.datasets import mnist
-from keras.utils import to_categorical
+import numpy as np
 
-# Load MNIST dataset
-(X_train, y_train), (X_test, y_test) = mnist.load_data()
+# Define the number of inputs, hidden units, and outputs
+num_inputs = 3
+num_hidden = 2
+num_outputs = 1
 
-# Preprocess images
-X_train = X_train.reshape(-1, 28, 28, 1)
-X_test = X_test.reshape(-1, 28, 28, 1)
-X_train = X_train.astype('float32') / 255
-X_test = X_test.astype('float32') / 255
+# Initialize the weights and biases
+weights1 = np.random.rand(num_inputs, num_hidden)
+weights2 = np.random.rand(num_hidden, num_outputs)
+bias1 = np.zeros((1, num_hidden))
+bias2 = np.zeros((1, num_outputs))
 
-# One-hot encode labels
-y_train = to_categorical(y_train, 10)
-y_test = to_categorical(y_test, 10)
+# Define the activation functions
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
 
-# Build the model
-model = Sequential()
-model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)))
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(Flatten())
-model.add(Dense(128, activation='relu'))
-model.add(Dropout(0.2))
-model.add(Dense(10, activation='softmax'))
+def ReLU(x):
+    return np.maximum(x, 0)
 
-# Compile the model
-model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+# Define the derivative of the activation functions
+def sigmoid_derivative(x):
+    return x * (1 - x)
 
-# Train the model
-model.fit(X_train, y_train, batch_size=64, epochs=10, verbose=1)
+def ReLU_derivative(x):
+    return 1 * (x > 0)
+
+# Define the learning rate and input data
+learning_rate = 0.1
+input_data = np.array([[0, 0, 1]])
+
+# Forward pass
+hidden_layer = np.dot(input_data, weights1) + bias1
+hidden_layer = sigmoid(hidden_layer)
+output_layer = np.dot(hidden_layer, weights2) + bias2
+output_layer = sigmoid(output_layer)
+
+# Error calculation
+error = np.mean((output_layer - np.array([1]))**2)
+
+# Backward pass
+delta_output = 2 * (output_layer - np.array([1])) * sigmoid_derivative(output_layer)
+delta_hidden = delta_output.dot(weights2.T) * sigmoid_derivative(hidden_layer)
+
+# Weight update
+weights2 -= learning_rate * hidden_layer.T.dot(delta_output)
+bias2 -= learning_rate * np.sum(delta_output, axis=0, keepdims=True)
+weights1 -= learning_rate * input_data.T.dot(delta_hidden)
+bias1 -= learning_rate * np.sum(delta_hidden, axis=0, keepdims=True)
 ```
+
+This code example demonstrates the basic steps of backpropagation in a simple neural network with one hidden layer. The weights and biases are updated based on the error gradient, and the error is calculated between the predicted output and the actual output.
 */
