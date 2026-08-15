@@ -1,209 +1,205 @@
 <?php
-// 2026-08-14 03:41:51
+// 2026-08-15 02:37:03
 
 /* PHP
-**Topic:** PDO Prepared Statements in PHP
+**Object-Oriented Programming with Classes**
 
-PDO prepared statements are used to prevent SQL injection attacks and improve the performance of database queries. They allow you to separate the SQL query from the data that will be used in the query. This helps to keep your code organized and makes it easier to read and understand. PDO prepared statements also cache the compiled SQL, so subsequent calls to the same query run faster.
+Object-Oriented Programming (OOP) is a programming paradigm that allows developers to create objects that contain both data and functions that operate on that data. In PHP, this is achieved using classes. A class is a blueprint or a template that defines the properties and methods of an object. Classes can inherit properties and methods from other classes, reducing code duplication and promoting modularity. This approach helps to create more scalable, reusable, and maintainable code.
 
+**Example Code**
 ```php
-<?php
-// Connect to database
-$dsn = 'mysql:host=localhost;dbname=mydb';
-$username = 'myuser';
-$password = 'mypassword';
-try {
-    $pdo = new PDO($dsn, $username, $password);
-} catch (PDOException $e) {
-    echo 'Connection failed: ' . $e->getMessage();
+// define a class Person
+class Person {
+    private $name;
+    private $age;
+
+    // constructor to initialize name and age
+    function __construct($name, $age) {
+        $this->name = $name;
+        $this->age = $age;
+    }
+
+    // method to display person details
+    function displayDetails() {
+        echo "Name: " . $this->name . "\n";
+        echo "Age: " . $this->age . "\n";
+    }
 }
 
-// Prepare a SQL query
-$stmt = $pdo->prepare('SELECT * FROM users WHERE name = :name AND email = :email');
-// Bind the query parameters
-$stmt->bindParam(':name', $name);
-$stmt->bindParam(':email', $email);
-// Set the values for the parameters
-$name = 'John Doe';
-$email = 'john@example.com';
-// Execute the query
-$stmt->execute();
-// Fetch the results
-$users = $stmt->fetchAll();
-foreach ($users as $user) {
-    echo $user['id'] . ' ' . $user['name'] . ' ' . $user['email'] . "\n";
-}
-$pdo = null;
-?>
+// create an object of class Person
+$person1 = new Person("John Doe", 30);
+
+// call the displayDetails method on the object
+$person1->displayDetails();
 ```
+In this example, we define a class `Person` with two private properties `name` and `age`, and a constructor method `__construct` to initialize these properties. We also define a method `displayDetails` to display the person's details. We then create an object `person1` of class `Person` and call the `displayDetails` method on it.
 */
 
 /* Laravel
-**Laravel Eloquent Relationship - One-To-One**
+**Laravel Eloquent Scopes**
 
-Eloquent relationship in Laravel allows you to perform CRUD operations on associated models. A one-to-one relationship is established when one instance of a model is related to one instance of another model. This type of relationship is useful when a model has a separate model associated with it, such as a user having a profile.
+Laravel Eloquent Scopes are a way to define complex database queries without having to chain multiple methods together. They allow you to encapsulate logic that you would normally put in a query builder or SQL directly into your model, making your code more maintainable and readable.
 
 ```php
-// User Model
+// app/Models/User.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
 class User extends Model
 {
-    protected $fillable = [
-        'name', 'email', 'password'
-    ];
-
-    public function profile()
+    protected static function scopeActive($query)
     {
-        return $this->hasOne(Profile::class);
+        // Define a scope that gets only active users
+        return $query->where('is_active', true);
+    }
+
+    protected static function scopeAdmin($query)
+    {
+        // Define a scope that gets only admin users
+        return $query->where('role', 'admin');
     }
 }
 
-// Profile Model
-class Profile extends Model
+// Then you can use these scopes in your controller like this:
+// app/Http/Controllers/UserController.php
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\User;
+
+class UserController extends Controller
 {
-    protected $fillable = [
-        'bio', 'image'
-    ];
-
-    public function user()
+    public function index(Request $request)
     {
-        return $this->belongsTo(User::class);
+        $users = User::active()->admin()->get(); // Get active admin users
+        // or 
+        $users = User::active()->where('role', 'admin')->get(); // Get active users who are also admins
     }
 }
-
-// To get a user with their profile
-$user = User::with('profile')->find(1);
-
-// To create a profile for a user
-$user->profile()->create([
-    'bio' => 'Hello, I am John Doe',
-    'image' => 'profile-image.jpg'
-]);
-
-// To get a profile by user ID
-$profile = Profile::where('user_id', 1)->first();
 ```
+In this example, the `scopeActive` and `scopeAdmin` methods can be chained together to create complex queries without having to write raw SQL or chain multiple methods together. This makes your code cleaner, more readable, and easier to maintain.
 */
 
 /* MySQL
-Indexing in MySQL
+**Triggers in MySQL**
 
-Indexing is a key technique used to speed up querying in database systems like MySQL. It does this by pre-organizing data in an efficient manner that allows for faster lookup, insertion, and deletion times. An index is created on one or more columns of a table and can either be a clustered index where data is physically stored in the order it appears in the index or a non-clustered index where data is stored in a random order. Creating an index can also slow down insertion and deletion of data because the index has to be updated. 
+Triggers in MySQL are procedural blocks of SQL statements that are automatically executed when a specified event occurs. This event can be an INSERT, UPDATE, or DELETE operation on a table. Triggers allow database administrators to maintain data consistency, automatically populate fields, and implement business logic without altering existing application code. They can be thought of as stored procedures that are bound to specific events on a table. Triggers can be used to prevent data loss, perform validation, and ensure data integrity.
 
 ```sql
--- Create a table without any indexes
-CREATE TABLE employees (
-    id INT AUTO_INCREMENT,
-    name VARCHAR(255),
-    position VARCHAR(255),
-    PRIMARY KEY (id)
+CREATE TABLE orders (
+  id INT AUTO_INCREMENT,
+  customer_id INT,
+  order_date DATE,
+  total DECIMAL(10, 2),
+  PRIMARY KEY (id)
 );
 
--- Insert some data
-INSERT INTO employees (name, position) VALUES ('John Doe', 'Software Engineer');
-INSERT INTO employees (name, position) VALUES ('Jane Doe', 'Data Analyst');
-INSERT INTO employees (name, position) VALUES ('John Smith', 'Quality Assurance');
+CREATE TABLE orders_audit (
+  id INT AUTO_INCREMENT,
+  order_id INT,
+  event VARCHAR(20),
+  event_date DATE,
+  changes TEXT,
+  PRIMARY KEY (id)
+);
 
--- Create an index on the position column
-CREATE INDEX idx_position ON employees (position);
+CREATE TRIGGER audit_order_insert
+BEFORE INSERT ON orders
+FOR EACH ROW
+BEGIN
+  INSERT INTO orders_audit (order_id, event, event_date, changes)
+  VALUES (NEW.id, 'INSERT', NOW(), 'New order inserted');
+END;
 
--- Create an index on the name column
-CREATE UNIQUE INDEX idx_name ON employees (name);
-
--- Now queries like this one will be faster
-SELECT * FROM employees WHERE position = 'Software Engineer';
-
--- To drop the index you just created
-DROP INDEX idx_name ON employees;
+CREATE TRIGGER audit_order_update
+BEFORE UPDATE ON orders
+FOR EACH ROW
+BEGIN
+  INSERT INTO orders_audit (order_id, event, event_date, changes)
+  VALUES (NEW.id, 'UPDATE', NOW(), CONCAT('Order ', NEW.id, ' updated: ', NEW.total, ' to ', OLD.total));
+END;
 ```
 */
 
 /* JavaScript
-**Closures with Callback Functions**
+Closures in JavaScript
 
-A closure is a function that has access to its own scope and the scope of its outer functions, even when the outer function has returned. This can be combined with callback functions to create more complex and dynamic coding solutions.
+Closures are a fundamental concept in JavaScript programming, enabling the creation of functions that remember their surrounding environment even when the function has returned. This concept allows developers to reuse code by encapsulating data and behavior within a single unit.
 
-When a callback function is passed to a function that uses closures, the callback function can access the variables and data of the outer function even after the outer function has returned. This can be used to create more flexibility and reusability in code.
+A closure is formed when a function has access to its outer function's scope, even after the outer function has returned. This access enables it to use variables defined in the outer function.
+
+Here is an example of a closure in JavaScript:
 
 ```javascript
-function outerFunction(name, age, callback) {
-    // Create a closure with a variable and assign it a value
-    var person = {
-        name: name,
-        age: age
-    };
+// define an outer function
+function outerFunction(name) {
+  console.log("Name:", name);
 
-    // Use the callback function to process the closure data
-    callback(person);
+  // define an inner function within the outer function
+  function innerFunction() {
+    console.log("Hello, " + name + "!");
+  }
+
+  // return the inner function as the result of the outer function
+  return innerFunction;
 }
 
-// Define a callback function to process the closure data
-function callbackFunction(person) {
-    // Access the person object data and use it
-    console.log('Hello, my name is ' + person.name + ' and I am ' + person.age + ' years old.');
-}
+// create a closure by calling the outer function and storing the result
+var greetJohn = outerFunction("John");
+var greetAlice = outerFunction("Alice");
 
-// Create a new person object and pass it to the outerFunction
-outerFunction('John Doe', 30, callbackFunction);
+// use the closure to access the enclosed data and behavior
+greetJohn(); 
+greetAlice();
 ```
+
+In this example, `outerFunction` defines `innerFunction` within its scope, which has access to `name` even after `outerFunction` has returned. The closure returned by `outerFunction` can be used multiple times with different values, making it reusable. When called with different names, the closure correctly logs the relevant greeting.
 */
 
 /* AI
-**Topic: Neural Network Backpropagation Tutorial**
+**Transfer Learning in Neural Networks**
 
-Backpropagation is a fundamental algorithm used to train neural networks by minimizing the error between predicted and actual outputs. It works by iteratively adjusting the weights and biases of the network based on the error gradient. The process involves three main steps: forward pass, error calculation, and weight update. During the forward pass, the input is propagated through the network to produce the output. The error is then calculated between the predicted output and the actual output. Finally, the weight update rule is applied to adjust the weights and biases of the network.
+Transfer learning is an important technique in neural networks where a model pre-trained on a large dataset is used to adapt to a different task. This technique involves fine-tuning the pre-trained model using the new task's data. This approach has several advantages including lower computational cost and higher accuracy on smaller datasets. 
+
+In transfer learning, the model's lower layers learn general features that are shared across related tasks while the upper layers learn task-specific features. This makes the model more robust and allows it to perform well on a variety of tasks. 
+
+Here's an example of how to use transfer learning in the PyTorch library:
 
 ```python
-# Import necessary libraries
-import numpy as np
+# Import the necessary libraries
+import torch
+import torch.nn as nn
+import torchvision
+import torchvision.transforms as transforms
 
-# Define the number of inputs, hidden units, and outputs
-num_inputs = 3
-num_hidden = 2
-num_outputs = 1
+# Define the model
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.fc1 = nn.Linear(128, 10) # Output layer for digit classification
 
-# Initialize the weights and biases
-weights1 = np.random.rand(num_inputs, num_hidden)
-weights2 = np.random.rand(num_hidden, num_outputs)
-bias1 = np.zeros((1, num_hidden))
-bias2 = np.zeros((1, num_outputs))
+    def forward(self, x):
+        x = torch.relu(self.fc1(x))
+        return x
 
-# Define the activation functions
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+# Load the pre-trained model
+model = torchvision.models/resnet50(pretrained=True) 
 
-def ReLU(x):
-    return np.maximum(x, 0)
+# Freeze the weights of the lower layers
+for param in model.parameters():
+    param.requires_grad = False
 
-# Define the derivative of the activation functions
-def sigmoid_derivative(x):
-    return x * (1 - x)
+# Add the new classifier
+model.fc = nn.Linear(25088, 2) # Output layer for our task
 
-def ReLU_derivative(x):
-    return 1 * (x > 0)
+# Initialize the new classifier
+model.fc.weight.data.normal_(0.0, std=0.02)
+model.fc.bias.data.zero_()
 
-# Define the learning rate and input data
-learning_rate = 0.1
-input_data = np.array([[0, 0, 1]])
-
-# Forward pass
-hidden_layer = np.dot(input_data, weights1) + bias1
-hidden_layer = sigmoid(hidden_layer)
-output_layer = np.dot(hidden_layer, weights2) + bias2
-output_layer = sigmoid(output_layer)
-
-# Error calculation
-error = np.mean((output_layer - np.array([1]))**2)
-
-# Backward pass
-delta_output = 2 * (output_layer - np.array([1])) * sigmoid_derivative(output_layer)
-delta_hidden = delta_output.dot(weights2.T) * sigmoid_derivative(hidden_layer)
-
-# Weight update
-weights2 -= learning_rate * hidden_layer.T.dot(delta_output)
-bias2 -= learning_rate * np.sum(delta_output, axis=0, keepdims=True)
-weights1 -= learning_rate * input_data.T.dot(delta_hidden)
-bias1 -= learning_rate * np.sum(delta_hidden, axis=0, keepdims=True)
+# Print the model's parameters
+print(model.fc)
 ```
 
-This code example demonstrates the basic steps of backpropagation in a simple neural network with one hidden layer. The weights and biases are updated based on the error gradient, and the error is calculated between the predicted output and the actual output.
+Note: In this example, we're using the ResNet-50 pre-trained model on the ImageNet dataset, which is a large-scale dataset containing images from 1,000 classes, and reusing its lower layers for a smaller task of binary classification.
 */
