@@ -1,170 +1,182 @@
 <?php
-// 2026-08-16 02:46:28
+// 2026-08-17 02:46:07
 
 /* PHP
-Topic: **Closures and Anonymous Functions in PHP**
+**Closures in PHP**
 
-A closure in PHP is a reusable block of code which "remembers" its context even when it's no longer in scope. This means that a closure can access the variables in its outer scope. Anonymous functions are also known as closures when they don't take any variables from their outer scope.
-
-PHP uses anonymous functions to make code concise and expressive. They are useful when a function is needed only once.
+Closures in PHP are a powerful tool that allows developers to create an anonymous function that has access to its own scope as well as the scope in which it was created. This enables the function to use variables and functions that are available within the surrounding scope. Closures can be used to create a more object-oriented approach without the need for classes.
 
 ```php
-// define an anonymous function that prints the value of $value and increments it by 1
-$increment = function($value) {
-    // using the value from the outer scope
-    echo "Value before increment: $value\n";
-    // modify the value and use it inside the function
-    $newValue = ++$value;
-    echo "Value after increment: $newValue\n";
-    // return the new value
-    return $newValue;
+// Define a function that will be used within a closure
+function greet($name) {
+    echo "Hello, $name!\n";
+}
+
+// Create a closure that has access to the greet function and the outer function's scope
+$closure = function($name) use ($greet) {
+    return $greet($name) . " How are you?";
 };
 
-// we can use the $increment function
-$result = $increment(5);
-echo "The function returned: $result\n";
+// Call the closure
+$closure("John");
 
-// or directly assign the return value
-$increment(10);
+// To create a closure with default values use the following code.
+$closureWithDefaults = function($name = "Guest", $city = "New York") {
+    return "Hello from $city, I'm $name.";
+};
+
+// Call the closure with default values
+echo $closureWithDefaults() . "\n";
 ```
 */
 
 /* Laravel
-**Eager Loading in Laravel**
+**Middleware in Laravel**
 
-Eager Loading is a technique in Eloquent, a popular Object-Relational Mapping (ORM) for Laravel, that allows you to load related models in a single database query, reducing the number of queries made to the database and improving performance.
+Middleware in Laravel is a class that contains methods to be called before or after a request is handled by a controller. This allows for easy modification and filtering of the incoming request or outgoing response. There are two types of middleware in Laravel - global middleware and route middleware.
 
-This feature is particularly useful when dealing with complex relationships between models, such as a user having multiple posts, and each post having multiple comments.
+Here is an example of creating a global middleware:
 
-Here is an example of using Eager Loading in Laravel:
+```php
+// File: app/Http/Middleware/AuthCheck.php
 
-```
-// Define the relationship in the Post model
-class Post extends Model
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Support\Facades\Auth;
+
+class AuthCheck
 {
-    public function comments()
+    public function handle(Request $request, Closure $next)
     {
-        return $this->hasMany(Comment::class);
-    }
-}
-
-// Load the eager loaded comments when retrieving a post
-$posts = Post::with('comments')->get();
-
-// Now, you can access the comments for each post
-foreach ($posts as $post) {
-    foreach ($post->comments as $comment) {
-        // Do something with the comment
-        echo $comment->author;
+        if (!Auth::check()) {
+            return redirect('/login');
+        }
+        return $next($request);
     }
 }
 ```
+
+Then you need to register this middleware in the kernel file:
+
+```php
+// File: app/Http/Kernel.php
+
+namespace App\Http;
+
+use Illuminate\Foundation\Http\Kernel as HttpKernel;
+
+class Kernel extends HttpKernel
+{
+    protected $middleware = [
+        // other middleware...
+        \App\Http\Middleware\AuthCheck::class,
+    ];
+
+    // other code...
+}
+```
+
+After that, any route will be protected by this middleware. If a user tries to access a route without being authenticated, they will be redirected to the login page.
 */
 
 /* MySQL
-**Database Indexing**
+MySQL Indexing
+MySQL indexing is a way to improve the speed of data retrieval operations by creating an index, which is essentially a copy of the data, sorted in a way that allows for efficient lookups.
 
-Database indexing in MySQL is a technique used to speed up query performance by allowing the database to quickly locate data. Indexing creates an index in a specific column or group of columns that are frequently used in WHERE and JOIN clauses. This index serves as a shortcut for the database, allowing it to bypass the need to scan the entire table. By creating an index on a column, the database can perform searches on that column more efficiently. There are different types of indexes such as B-tree index, full-text index etc.
+Indexing can improve query performance by reducing the number of rows that the server needs to examine to find the requested data. Indexing is particularly effective on columns that are used in WHERE or JOIN clauses.
+
+There are several types of indexes in MySQL, including B-tree, full-text, and hash indexes. The choice of index type depends on the specific use case and data distribution.
+
+Here is an example of creating an index on a column:
 
 ```sql
--- Create a table without an index
-CREATE TABLE employees (
-  id INT PRIMARY KEY,
+-- Create a table with a column to index
+CREATE TABLE customers (
+  id INT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(255),
-  salary DECIMAL(10,2)
+  email VARCHAR(255)
 );
 
--- Insert some data into the table
-INSERT INTO employees (id, name, salary) VALUES
-  (1, 'John Doe', 50000.00),
-  (2, 'Jane Doe', 60000.00),
-  (3, 'Bob Smith', 70000.00);
+-- Insert some sample data
+INSERT INTO customers (name, email) VALUES ('John Doe', 'john@example.com');
+INSERT INTO customers (name, email) VALUES ('Jane Doe', 'jane@example.com');
 
--- Create an index on the salary column
-CREATE INDEX idx_salary ON employees (salary);
+-- Create a B-tree index on the email column
+CREATE INDEX idx_email ON customers (email);
 
--- Query the table without an index
-SELECT * FROM employees WHERE salary = 60000.00;
-
--- Query the table with an index
-SELECT * FROM employees WHERE salary = 60000.00;
+-- Create an index to test query performance
+EXPLAIN SELECT * FROM customers WHERE email = 'john@example.com';
 ```
-
-In the above example, creating an index on the `salary` column can significantly speed up the query performance because it allows the database to quickly locate the desired row in the table.
 */
 
 /* JavaScript
-**Topic: Closures in JavaScript**
+Topic: Understanding Closures
 
-A closure is a function that has access to its own scope (local variables of the function) and the outer scope in which it was created, when executed outside of that scope or scope chain. This allows us to create functions that maintain state between separate function calls. Closures are commonly used in JavaScript for event handling and encapsulation of data. They help in preventing direct access to private data from outside of the containing function. 
+Understanding closures is crucial in JavaScript, as it involves the relationship between a function and its surrounding scope. A closure is created when a function is invoked and its context is preserved even after the function is no longer in scope, allowing it to access variables from its outer scope. This feature of JavaScript enables developers to implement private variables and encapsulation. Closures are often used in modules and factories to create a clean separation of concerns. They can be used to create event listeners, APIs and other higher-order functions.
 
 ```javascript
-// Outer function that creates a counter variable
-function createCounter() {
-  let count = 0; // Counter variable
+function outerFunction() {
+  let secret = 'top secret'; // variable in outer scope
 
-  // Inner function that uses the counter variable
-  function incrementCounter() {
-    count++; // Increment the counter
-    console.log(count); // Print the new counter value
+  function innerFunction() {
+    // innerFunction has access to outerFunction's secret variable
+    console.log(secret); // prints: top secret
   }
 
-  // Return the inner function
-  return incrementCounter;
+  innerFunction(); // invokes innerFunction to log the secret variable
+  // even after innerFunction finishes execution, the secret variable is preserved
 }
 
-// Create a counter using the outer function
-const counter = createCounter();
-
-// Call the inner function to increment and print the counter value
-counter(); // Output: 1
-counter(); // Output: 2
+outerFunction(); // invokes outerFunction to run innerFunction
 ```
 */
 
 /* AI
-**Topic: Implementing a Basic Neural Network using Keras for Image Classification**
+Topic: Predicting Stock Prices using Recurrent Neural Networks
 
-This topic focuses on a fundamental concept in the field of artificial intelligence, specifically exploring the use of neural networks for image classification tasks. A neural network is a series of layers made up of artificial neurons that are interconnected. In this case, we will utilize the Keras library in Python to train a simple neural network, allowing it to recognize images based on their features. This example assumes the user has prior knowledge of image processing and basic machine learning principles.
+Recurrent Neural Networks (RNNs) are a type of neural network well-suited for modeling temporal data, such as stock prices. These networks can learn complex patterns and relationships over time, enabling us to build predictive models of financial market trends. By training an RNN on historical stock price data, we can build a model that can forecast future prices. This can be particularly useful for investors and analysts looking to make informed decisions about their portfolios.
 
 ```python
 # Import necessary libraries
-from keras.datasets import mnist
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten
-from keras.layers import Conv2D, MaxPooling2D
+from keras.layers import LSTM, Dense
 
-# Load the MNIST dataset, a standard image classification dataset
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
+# Generate sample data (replace with actual stock price data)
+np.random.seed(0)
+time_steps = 100
+feature_dim = 5
+data = np.random.rand(time_steps, feature_dim)
 
-# Reshape input data for neural network model
-x_train = x_train.reshape(60000, 28, 28, 1)
-x_test = x_test.reshape(10000, 28, 28, 1)
+# Scale data using Min-Max Scaler
+scaler = MinMaxScaler(feature_range=(0,1))
+data_scaled = scaler.fit_transform(data)
 
-# Normalize pixel values between 0 and 1
-x_train = x_train.astype('float32') / 255
-x_test = x_test.astype('float32') / 255
-
-# Define the neural network architecture
+# Define RNN model architecture
 model = Sequential()
-model.add(Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=(28, 28, 1)))
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(Flatten())
-model.add(Dense(128, activation='relu'))
-model.add(Dropout(0.2))
-model.add(Dense(10, activation='softmax'))
+model.add(LSTM(units=10, return_sequences=True, input_shape=(1, feature_dim)))  # 10 units, return sequences
+model.add(LSTM(units=10))  # 10 units
+model.add(Dense(1))  # Output layer
+model.compile(optimizer='adam', loss='mean_squared_error')
 
-# Compile the model with loss function and optimizer
-model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+# Define training function
+def train_model(X_train, y_train):
+    model.fit(X_train, y_train, epochs=10, batch_size=10, verbose=0)
 
-# Train the model on the training set
-model.fit(x_train, y_train, batch_size=64, epochs=5)
+# Prepare data for training (create input/output pairs)
+X_train = data_scaled[:-1]
+y_train = data_scaled[1:]
 
-# Evaluate the model on the test set
-score = model.evaluate(x_test, y_test)
-print('Test loss:', score[0])
-print('Test accuracy:', score[1])
+# Train model
+train_model(X_train, y_train)
+
+# Make predictions
+X_pred = data_scaled[2:]  # Use last 2 time steps as input
+y_pred = model.predict(X_pred)
+
+# Plot predictions (note: actual plotting not shown here)
+print('Predicted values:', y_pred)
 ```
-
-In this example, a simple neural network model is implemented, trained on the MNIST dataset, and evaluated for its performance. This example demonstrates how Keras can be used to build and train neural networks in Python.
 */
