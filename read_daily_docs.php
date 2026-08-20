@@ -1,221 +1,207 @@
 <?php
-// 2026-08-19 09:52:15
+// 2026-08-20 02:41:38
 
 /* PHP
-Topic: Anonymous Functions and the use Keyword in PHP
+Prepared Statements with PDO
 
-Explanation:  
-Anonymous functions, also known as closures, allow you to create functions without a name and assign them to variables.  
-They are useful for callbacks, array manipulation, and encapsulating small pieces of logic.  
-When an anonymous function needs to access variables from the surrounding scope, the use keyword binds those variables to the closure.  
-The variables imported with use are captured by value by default; to capture by reference, prepend an ampersand (&).  
-Closures can also be returned from other functions, enabling powerful functional programming patterns.
+PDO (PHP Data Objects) provides a uniform interface for accessing many different databases.  
+Prepared statements separate SQL logic from data, which protects against SQL injection attacks.  
+They also improve performance when the same query is executed repeatedly with different values.  
+You prepare the statement once, then bind values and execute it as many times as needed.  
+Using PDO exceptions gives you a clean way to handle database errors.
 
-Code example with comments:
 <?php
-// Define a variable in the outer scope
-$message = "Hello, World!";
+// Create PDO connection (replace placeholders with actual credentials)
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
 
-// Create an anonymous function that uses the outer variable
-$printer = function() use ($message) {
-    // $message is available inside the closure because of 'use'
-    echo $message . PHP_EOL;
-};
+try {
+    // Enable exceptions for error handling
+    $pdo = new PDO($dsn, $username, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+    ]);
 
-// Call the anonymous function
-$printer(); // Outputs: Hello, World!
+    // Prepare an INSERT statement with named placeholders
+    $stmt = $pdo->prepare('INSERT INTO users (email, password) VALUES (:email, :password)');
 
-// Example of capturing by reference
-$count = 0;
-$increment = function() use (&$count) {
-    $count++; // Modifies the outer $count variable directly
-};
+    // Sample data to insert
+    $email = 'alice@example.com';
+    // Password should be hashed before storing
+    $hashedPassword = password_hash('secret123', PASSWORD_DEFAULT);
 
-$increment();
-$increment();
-echo "Count is $count" . PHP_EOL; // Outputs: Count is 2
+    // Bind parameters and execute the statement
+    $stmt->execute([
+        ':email' => $email,
+        ':password' => $hashedPassword
+    ]);
 
-// Returning a closure from a function
-function makeMultiplier($factor) {
-    return function($value) use ($factor) {
-        return $value * $factor;
-    };
+    echo 'User inserted successfully.';
+} catch (PDOException $e) {
+    // Handle any errors
+    echo 'Database error: ' . $e->getMessage();
 }
-
-$double = makeMultiplier(2);
-echo $double(5) . PHP_EOL; // Outputs: 10
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container & Dependency Injection  
+Laravel Topic: Queues and Jobs  
 
 Explanation:  
-The Laravel service container is a powerful tool that manages class dependencies and performs automatic resolution. It allows you to bind abstractions to concrete implementations, making your code loosely coupled and easier to test. By type‑hinting dependencies in a class constructor, the container will automatically inject the required objects when the class is resolved. This mechanism supports contextual bindings, singleton instances, and deferred providers for optimal performance. Understanding the container is essential for building maintainable, testable Laravel applications.  
+Laravel queues allow time‑consuming tasks to be processed in the background, keeping web requests fast.  
+A job class represents a single unit of work and can be dispatched to any configured queue driver.  
+The queue system automatically handles retries, failures, and can be monitored via the built‑in dashboard.  
+Using queues you can offload email sending, image processing, API calls, and other heavy operations.  
+Laravel provides simple artisan commands to generate jobs and to run workers that process the queued jobs.
 
-Code example (binding an interface to an implementation and injecting it into a controller):  
+Code Example (app/Jobs/SendWelcomeEmail.php):
+<?php
+namespace App\Jobs;
 
-// Define an interface that describes a contract for a payment gateway
-namespace App\Contracts;
-interface PaymentGateway {
-    public function charge(float $amount);
-}
+use App\Mail\WelcomeMail;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue; // Indicates the job should be queued
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Mail;
 
-// Create a concrete class that implements the interface
-namespace App\Services;
-use App\Contracts\PaymentGateway;
-class StripeGateway implements PaymentGateway {
-    public function charge(float $amount) {
-        // Here you would call Stripe's API to process the payment
-        return "Charged \${$amount} via Stripe.";
-    }
-}
+class SendWelcomeEmail implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-// Register the binding in a service provider (e.g., App\Providers\AppServiceProvider)
-namespace App\Providers;
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripeGateway;
-class AppServiceProvider extends ServiceProvider {
-    public function register() {
-        // Bind the interface to the concrete class; a new instance is created each time
-        $this->app->bind(PaymentGateway::class, StripeGateway::class);
-        // For a singleton (single shared instance), use $this->app->singleton(...)
-    }
-}
+    protected $user; // The user instance to receive the email
 
-// Inject the dependency into a controller via the constructor
-namespace App\Http\Controllers;
-use App\Contracts\PaymentGateway;
-use Illuminate\Http\Request;
-class OrderController extends Controller {
-    protected $gateway;
-
-    // Laravel automatically resolves and injects the StripeGateway implementation
-    public function __construct(PaymentGateway $gateway) {
-        $this->gateway = $gateway;
+    // Constructor receives the data needed for the job
+    public function __construct($user)
+    {
+        $this->user = $user;
     }
 
-    public function store(Request $request) {
-        $amount = $request->input('total');
-        $result = $this->gateway->charge($amount);
-        return response()->json(['message' => $result]);
+    // The logic that will be executed by the queue worker
+    public function handle()
+    {
+        // Build and send the welcome email
+        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
     }
 }
+?>
+
+Dispatching the job (e.g., in a controller after registration):
+<?php
+use App\Jobs\SendWelcomeEmail;
+
+// After creating the user...
+$user = User::create($request->all());
+
+// Dispatch the job to the default queue
+SendWelcomeEmail::dispatch($user);
+?>
+When you run the worker (e.g., php artisan queue:work), Laravel will pick up the job from the queue, execute the handle method, and send the welcome email asynchronously.
 */
 
 /* MySQL
-Topic: MySQL Transactions and ACID Properties  
+Topic: Common Table Expressions (CTEs) in MySQL
 
 Explanation:  
-A transaction groups one or more SQL statements so they are executed as a single unit of work.  
-MySQL guarantees the ACID properties—Atomicity, Consistency, Isolation, and Durability—when using InnoDB.  
-If any statement in the transaction fails, the whole transaction can be rolled back to keep data consistent.  
-You control the transaction boundaries with START TRANSACTION, COMMIT, and ROLLBACK.  
-Proper use of isolation levels (e.g., READ COMMITTED, REPEATABLE READ) prevents phenomena like dirty reads and non‑repeatable reads.  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and improves readability by allowing you to break complex queries into logical building blocks. MySQL supports both non‑recursive and recursive CTEs starting from version 8.0. Recursive CTEs enable hierarchical data processing such as traversing tree structures. CTEs are scoped to the statement they belong to, so they do not persist beyond the execution of that statement. Using CTEs can also help the optimizer generate more efficient execution plans compared with deeply nested subqueries.
 
-Code Example:  
--- Create a sample table for the transaction  
-CREATE TABLE accounts (  
-    account_id INT PRIMARY KEY,  
-    balance DECIMAL(10,2) NOT NULL  
-) ENGINE=InnoDB;  
+Code example with comments:
 
--- Insert initial balances  
-INSERT INTO accounts (account_id, balance) VALUES (1, 1000.00), (2, 500.00);  
-
--- Begin a transaction to transfer $200 from account 1 to account 2  
-START TRANSACTION;  
-
--- Debit account 1  
-UPDATE accounts SET balance = balance - 200.00 WHERE account_id = 1;  
-
--- Credit account 2  
-UPDATE accounts SET balance = balance + 200.00 WHERE account_id = 2;  
-
--- Check for any errors (in application code you would examine ROW_COUNT or error codes)  
--- If all statements succeeded, make the changes permanent  
-COMMIT;  
-
--- If an error had occurred, you would undo the changes instead:  
--- ROLLBACK;   (uncomment and use in error handling)  
-
--- Verify the final balances  
-SELECT * FROM accounts;   (should show account 1 with 800.00 and account 2 with 700.00)
+WITH RECURSIVE org_chart AS (                                   -- define a recursive CTE named org_chart
+    SELECT employee_id, manager_id, employee_name, 0 AS level   -- anchor member: top‑level employees
+    FROM employees
+    WHERE manager_id IS NULL                                    -- root nodes (no manager)
+    
+    UNION ALL                                                    -- combine anchor with recursive part
+    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1
+    FROM employees e                                            -- recursive member: fetch direct reports
+    JOIN org_chart oc ON e.manager_id = oc.employee_id
+)
+SELECT employee_id, manager_id, employee_name, level
+FROM org_chart
+ORDER BY level, manager_id;                                      -- final query reads the hierarchy in order.
 */
 
 /* JavaScript
 Topic: JavaScript Closures
 
-Explanation:
-A closure is created when an inner function retains access to variables from its outer (enclosing) function even after that outer function has finished executing.  
-Closures allow functions to have private state that cannot be accessed directly from the global scope.  
-They are useful for data encapsulation, creating function factories, and implementing memoization.  
-Because the inner function holds a reference to the outer variables, those variables are not garbage‑collected until the closure is no longer reachable.  
-Understanding closures is essential for writing modular, maintainable JavaScript code.
+Explanation:  
+A closure is created when an inner function accesses variables from its outer (enclosing) function after the outer function has finished executing. This allows the inner function to retain a reference to the outer scope’s variables, enabling data encapsulation and private state. Closures are fundamental for creating function factories, maintaining state across calls, and implementing patterns like the module pattern. They work because JavaScript functions form lexical environments that preserve the scope chain. Understanding closures helps avoid common pitfalls such as unintended memory retention or variable capture in loops.
 
-Code example (with comments):
-function makeCounter(start) {                     // outer function, receives initial value
-    let count = start;                           // private variable, not exposed outside
+Code Example:
+// Function that returns a counter function (closure)
+function createCounter(start) {
+    // 'count' is a variable in the outer function's scope
+    let count = start;
 
-    return function() {                          // inner function forms a closure
-        count += 1;                               // can modify the outer variable
-        console.log('Current count:', count);    // uses the closed-over variable
+    // The inner function forms a closure over 'count'
+    return function() {
+        // Each call increments and returns the current count
+        count += 1;
+        return count;
     };
 }
 
-const counterA = makeCounter(0);                 // creates a new closure with its own count
-const counterB = makeCounter(10);                // another independent closure
+// Create two independent counters
+const counterA = createCounter(0);
+const counterB = createCounter(10);
 
-counterA(); // Output: Current count: 1
-counterA(); // Output: Current count: 2
-counterB(); // Output: Current count: 11
-counterA(); // Output: Current count: 3
-
-// The variables 'count' inside counterA and counterB are separate due to closures.
+// Use the counters
+console.log(counterA()); // 1
+console.log(counterA()); // 2
+console.log(counterB()); // 11
+console.log(counterB()); // 12
+console.log(counterA()); // 3   // counterA maintains its own private 'count' variable.
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API
+Topic: Few‑Shot Prompt Engineering with the OpenAI GPT‑4 API  
 
 Explanation:  
-Few‑shot prompting lets you give the model a small number of example interactions so it can infer the desired pattern. By embedding these examples directly in the user message you guide the model without changing any parameters. This technique works well for tasks like classification, transformation, or generating structured output. The examples should be concise, representative, and clearly separated from the actual query. Adjusting the temperature to a low value (e.g., 0.2) helps the model follow the demonstrated format more faithfully.
+Few‑shot prompting supplies a small set of example input‑output pairs inside the prompt, guiding the model toward the desired behavior without fine‑tuning.  
+By framing the task as a pattern that the model can recognize, you can achieve higher accuracy on classification, transformation, or generation tasks.  
+The technique works well for zero‑to‑few‑shot scenarios, especially when labeled data is scarce.  
+Key elements include a clear instruction, representative examples, and a delimiter that separates the examples from the new query.  
+When combined with temperature control, you can balance consistency and creativity for robust results.  
 
-Code example (Python, using the openai library):
+Code example (Python, using the OpenAI library):  
 
-import os
-import openai
+import os  
+import openai  
 
-# Load your OpenAI API key from an environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set your OpenAI API key; you can also configure it via the OPENAI_API_KEY environment variable  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define a few‑shot prompt that shows how to convert natural‑language dates to ISO format
-few_shot_prompt = """Convert the following dates to ISO 8601 (YYYY‑MM‑DD) format.
+def classify_sentiment(text):  
+    # Construct a few‑shot prompt with two labeled examples and a placeholder for the new input  
+    prompt = (  
+        "Classify the sentiment of the following sentences as Positive, Negative, or Neutral.\n\n"  
+        "Sentence: I love the new design of the app.\n"  
+        "Sentiment: Positive\n\n"  
+        "Sentence: The update broke the login feature.\n"  
+        "Sentiment: Negative\n\n"  
+        f"Sentence: {text}\n"  
+        "Sentiment:"  
+    )  
 
-User: March 5th, 2022
-Assistant: 2022-03-05
+    response = openai.ChatCompletion.create(  
+        model="gpt-4",  
+        messages=[{"role": "user", "content": prompt}],  
+        temperature=0.0,          # Low temperature for deterministic output  
+        max_tokens=10,            # Only need a short label  
+        top_p=1,  
+        n=1,  
+        stop=["\n"]               # Stop at the end of the label line  
+    )  
 
-User: 12/31/2021
-Assistant: 2021-12-31
+    # Extract the model's answer and strip whitespace  
+    sentiment = response.choices[0].message["content"].strip()  
+    return sentiment  
 
-User: 7th July 2020
-Assistant:"""
-
-# The actual user query we want the model to answer
-new_query = " 15 August 2023 "
-
-# Combine the few‑shot examples with the new query
-full_prompt = few_shot_prompt + " " + new_query
-
-response = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo",
-    messages=[{"role": "user", "content": full_prompt}],
-    temperature=0.2,          # low temperature to enforce consistency
-    max_tokens=10,            # we only need a short date string
-)
-
-# Extract and print the assistant’s answer
-iso_date = response.choices[0].message["content"].strip()
-print("ISO date:", iso_date)
+# Example usage  
+sample = "The tutorial was okay, not great but helpful enough."  
+print(f"Input: {sample}")  
+print("Predicted sentiment:", classify_sentiment(sample))
 */
 
