@@ -1,207 +1,242 @@
 <?php
-// 2026-08-20 02:41:38
+// 2026-08-21 02:48:17
 
 /* PHP
-Prepared Statements with PDO
+Topic: Prepared Statements with PDO
 
-PDO (PHP Data Objects) provides a uniform interface for accessing many different databases.  
-Prepared statements separate SQL logic from data, which protects against SQL injection attacks.  
-They also improve performance when the same query is executed repeatedly with different values.  
-You prepare the statement once, then bind values and execute it as many times as needed.  
-Using PDO exceptions gives you a clean way to handle database errors.
+Explanation:  
+Prepared statements separate SQL code from data, which prevents SQL injection by ensuring that user‑supplied values are never executed as part of the query. PDO (PHP Data Objects) provides a consistent interface for prepared statements across many database drivers. You prepare the SQL once, then bind values or pass them directly when executing, allowing the database to reuse the execution plan for better performance. Errors can be handled with exceptions, making debugging easier. This approach also simplifies handling of different data types, such as dates and binary blobs.
 
+Code example with comments:
 <?php
-// Create PDO connection (replace placeholders with actual credentials)
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
+// Enable PDO exceptions for error handling
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
 
-try {
-    // Enable exceptions for error handling
-    $pdo = new PDO($dsn, $username, $password, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-    ]);
+// Create a new PDO instance (replace DSN, username, password with real values)
+$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass', $options);
 
-    // Prepare an INSERT statement with named placeholders
-    $stmt = $pdo->prepare('INSERT INTO users (email, password) VALUES (:email, :password)');
+// Prepare an INSERT statement with named placeholders
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)";
+$stmt = $pdo->prepare($sql);
 
-    // Sample data to insert
-    $email = 'alice@example.com';
-    // Password should be hashed before storing
-    $hashedPassword = password_hash('secret123', PASSWORD_DEFAULT);
+// Bind values to the placeholders and execute
+$stmt->execute([
+    ':username'   => 'alice',
+    ':email'      => 'alice@example.com',
+    ':created_at' => date('Y-m-d H:i:s')
+]);
 
-    // Bind parameters and execute the statement
-    $stmt->execute([
-        ':email' => $email,
-        ':password' => $hashedPassword
-    ]);
+// Prepare a SELECT statement to fetch a user by email
+$selectSql = "SELECT id, username, email FROM users WHERE email = :email";
+$selectStmt = $pdo->prepare($selectSql);
+$selectStmt->execute([':email' => 'alice@example.com']);
 
-    echo 'User inserted successfully.';
-} catch (PDOException $e) {
-    // Handle any errors
-    echo 'Database error: ' . $e->getMessage();
+// Fetch the result as an associative array
+$user = $selectStmt->fetch();
+
+if ($user) {
+    echo "User ID: " . $user['id'] . PHP_EOL;
+    echo "Username: " . $user['username'] . PHP_EOL;
+    echo "Email: " . $user['email'] . PHP_EOL;
+} else {
+    echo "No user found." . PHP_EOL;
 }
 ?>
 */
 
 /* Laravel
-Laravel Topic: Queues and Jobs  
+Topic: Laravel Service Container & Automatic Dependency Injection  
 
 Explanation:  
-Laravel queues allow time‑consuming tasks to be processed in the background, keeping web requests fast.  
-A job class represents a single unit of work and can be dispatched to any configured queue driver.  
-The queue system automatically handles retries, failures, and can be monitored via the built‑in dashboard.  
-Using queues you can offload email sending, image processing, API calls, and other heavy operations.  
-Laravel provides simple artisan commands to generate jobs and to run workers that process the queued jobs.
+The Service Container is the heart of Laravel’s inversion of control (IoC) system. It resolves class dependencies automatically, allowing you to type‑hint objects in constructors or controller methods without manually creating them. By binding abstractions to concrete implementations, you can swap implementations (e.g., for testing) without changing the consuming code. When the container builds an object, it inspects its constructor signature and injects the required dependencies recursively. This promotes clean, testable code and decouples components throughout the application.  
 
-Code Example (app/Jobs/SendWelcomeEmail.php):
-<?php
-namespace App\Jobs;
+Code example (plain PHP with comments):  
 
-use App\Mail\WelcomeMail;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue; // Indicates the job should be queued
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Mail;
+<?php  
+namespace App\Services;  
 
-class SendWelcomeEmail implements ShouldQueue
-{
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+// Define an interface that describes the contract for a payment gateway.  
+interface PaymentGatewayInterface {  
+    public function charge(float $amount);  
+}  
 
-    protected $user; // The user instance to receive the email
+// Concrete implementation using Stripe.  
+class StripeGateway implements PaymentGatewayInterface {  
+    public function charge(float $amount) {  
+        // Imagine calling Stripe's SDK here.  
+        return "Charged \${$amount} via Stripe.";  
+    }  
+}  
 
-    // Constructor receives the data needed for the job
-    public function __construct($user)
-    {
-        $this->user = $user;
-    }
+// Concrete implementation using PayPal (useful for testing or alternative provider).  
+class PayPalGateway implements PaymentGatewayInterface {  
+    public function charge(float $amount) {  
+        // Imagine calling PayPal's SDK here.  
+        return "Charged \${$amount} via PayPal.";  
+    }  
+}  
 
-    // The logic that will be executed by the queue worker
-    public function handle()
-    {
-        // Build and send the welcome email
-        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
-    }
-}
-?>
+// Service Provider where bindings are registered with the container.  
+namespace App\Providers;  
 
-Dispatching the job (e.g., in a controller after registration):
-<?php
-use App\Jobs\SendWelcomeEmail;
+use Illuminate\Support\ServiceProvider;  
+use App\Services\PaymentGatewayInterface;  
+use App\Services\StripeGateway;  
 
-// After creating the user...
-$user = User::create($request->all());
+class PaymentServiceProvider extends ServiceProvider {  
+    public function register() {  
+        // Bind the interface to a concrete class.  
+        // Swap StripeGateway for PayPalGateway to change implementation globally.  
+        $this->app->bind(PaymentGatewayInterface::class, StripeGateway::class);  
+    }  
+}  
 
-// Dispatch the job to the default queue
-SendWelcomeEmail::dispatch($user);
-?>
-When you run the worker (e.g., php artisan queue:work), Laravel will pick up the job from the queue, execute the handle method, and send the welcome email asynchronously.
+// A controller that receives the gateway via constructor injection.  
+namespace App\Http\Controllers;  
+
+use App\Services\PaymentGatewayInterface;  
+use Illuminate\Http\Request;  
+
+class CheckoutController extends Controller {  
+    protected $gateway;  
+
+    // The container automatically injects the concrete implementation.  
+    public function __construct(PaymentGatewayInterface $gateway) {  
+        $this->gateway = $gateway;  
+    }  
+
+    public function process(Request $request) {  
+        $amount = $request->input('amount');  
+        $result = $this->gateway->charge((float) $amount);  
+        return response()->json(['message' => $result]);  
+    }  
+}  
+
+// Usage in routes/web.php (or api.php)  
+// Route::post('/checkout', [CheckoutController::class, 'process']);   (no markdown)  
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) in MySQL
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and improves readability by allowing you to break complex queries into logical building blocks. MySQL supports both non‑recursive and recursive CTEs starting from version 8.0. Recursive CTEs enable hierarchical data processing such as traversing tree structures. CTEs are scoped to the statement they belong to, so they do not persist beyond the execution of that statement. Using CTEs can also help the optimizer generate more efficient execution plans compared with deeply nested subqueries.
+A Common Table Expression (CTE) is a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and can improve query readability, especially for complex subqueries. Recursive CTEs allow you to perform hierarchical or tree‑like queries by repeatedly applying a query to its own result set. They are useful for traversing organizational charts, category trees, or generating series of numbers. MySQL 8.0+ fully supports both non‑recursive and recursive CTEs.
 
-Code example with comments:
+Code example (creating an employee hierarchy and retrieving all subordinates of a manager):
 
-WITH RECURSIVE org_chart AS (                                   -- define a recursive CTE named org_chart
-    SELECT employee_id, manager_id, employee_name, 0 AS level   -- anchor member: top‑level employees
+-- Sample data: employee table with id, name, manager_id
+CREATE TABLE employees (
+    id INT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    manager_id INT NULL,
+    FOREIGN KEY (manager_id) REFERENCES employees(id)
+);
+
+INSERT INTO employees (id, name, manager_id) VALUES
+(1, 'Alice', NULL),        -- top‑level manager
+(2, 'Bob', 1),
+(3, 'Carol', 1),
+(4, 'Dave', 2),
+(5, 'Eve', 2),
+(6, 'Frank', 3);
+
+-- Recursive CTE to list all subordinates under manager with id = 1 (Alice)
+WITH RECURSIVE subordinates AS (
+    -- Anchor member: start with the direct reports of Alice
+    SELECT id, name, manager_id, 1 AS level
     FROM employees
-    WHERE manager_id IS NULL                                    -- root nodes (no manager)
-    
-    UNION ALL                                                    -- combine anchor with recursive part
-    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1
-    FROM employees e                                            -- recursive member: fetch direct reports
-    JOIN org_chart oc ON e.manager_id = oc.employee_id
+    WHERE manager_id = 1
+    UNION ALL
+    -- Recursive member: find employees whose manager is in the previous level
+    SELECT e.id, e.name, e.manager_id, s.level + 1
+    FROM employees e
+    INNER JOIN subordinates s ON e.manager_id = s.id
 )
-SELECT employee_id, manager_id, employee_name, level
-FROM org_chart
-ORDER BY level, manager_id;                                      -- final query reads the hierarchy in order.
+SELECT id, name, manager_id, level
+FROM subordinates
+ORDER BY level, name;
+
+-- The result shows Bob, Carol (level 1) and then Dave, Eve, Frank (level 2) as subordinates of Alice.
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: Closures in JavaScript
 
-Explanation:  
-A closure is created when an inner function accesses variables from its outer (enclosing) function after the outer function has finished executing. This allows the inner function to retain a reference to the outer scope’s variables, enabling data encapsulation and private state. Closures are fundamental for creating function factories, maintaining state across calls, and implementing patterns like the module pattern. They work because JavaScript functions form lexical environments that preserve the scope chain. Understanding closures helps avoid common pitfalls such as unintended memory retention or variable capture in loops.
+Explanation:
+A closure is a function that retains access to its lexical scope even when executed outside that scope.  
+It allows inner functions to remember variables from the outer function after the outer function has finished.  
+Closures are useful for data privacy, creating function factories, and maintaining state between calls.  
+They are created automatically whenever a function references variables from its outer environment.  
+Understanding closures helps avoid common pitfalls like unintended shared references in loops.
 
-Code Example:
-// Function that returns a counter function (closure)
-function createCounter(start) {
-    // 'count' is a variable in the outer function's scope
-    let count = start;
-
-    // The inner function forms a closure over 'count'
-    return function() {
-        // Each call increments and returns the current count
-        count += 1;
-        return count;
+Code example with comments:
+// Outer function creates a private variable `count`
+function createCounter() {
+    let count = 0;                     // This variable is local to createCounter
+    // Inner function forms a closure over `count`
+    return function increment() {
+        count++;                       // Modifies the closed-over variable
+        console.log('Current count:', count);
     };
 }
 
-// Create two independent counters
-const counterA = createCounter(0);
-const counterB = createCounter(10);
+// Use the closure
+const counterA = createCounter();      // counterA has its own `count`
+counterA(); // Current count: 1
+counterA(); // Current count: 2
 
-// Use the counters
-console.log(counterA()); // 1
-console.log(counterA()); // 2
-console.log(counterB()); // 11
-console.log(counterB()); // 12
-console.log(counterA()); // 3   // counterA maintains its own private 'count' variable.
+const counterB = createCounter();      // counterB gets a fresh `count`
+counterB(); // Current count: 1
+counterA(); // Current count: 3   (counterA's count continues independently)
 */
 
 /* AI
 Topic: Few‑Shot Prompt Engineering with the OpenAI GPT‑4 API  
 
 Explanation:  
-Few‑shot prompting supplies a small set of example input‑output pairs inside the prompt, guiding the model toward the desired behavior without fine‑tuning.  
-By framing the task as a pattern that the model can recognize, you can achieve higher accuracy on classification, transformation, or generation tasks.  
-The technique works well for zero‑to‑few‑shot scenarios, especially when labeled data is scarce.  
-Key elements include a clear instruction, representative examples, and a delimiter that separates the examples from the new query.  
-When combined with temperature control, you can balance consistency and creativity for robust results.  
+Few‑shot prompting supplies a small number of example input‑output pairs within the prompt to guide the model’s behavior on new queries. This technique is especially useful when you lack large training data but need the model to follow a specific format or style. By carefully selecting representative examples, you can steer GPT‑4 to perform tasks such as data extraction, classification, or code generation with high accuracy. The prompt must include clear delimiters and instructions to separate examples from the user request. Adjusting temperature to 0 and limiting max tokens ensures deterministic, concise responses.  
 
-Code example (Python, using the OpenAI library):  
+Code example (Python, using openai library):  
 
 import os  
 import openai  
 
-# Set your OpenAI API key; you can also configure it via the OPENAI_API_KEY environment variable  
+# Set your OpenAI API key (ensure it is stored securely)  
 openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-def classify_sentiment(text):  
-    # Construct a few‑shot prompt with two labeled examples and a placeholder for the new input  
+def few_shot_completion(user_query):  
+    # Construct the prompt with two examples of the desired behavior  
     prompt = (  
-        "Classify the sentiment of the following sentences as Positive, Negative, or Neutral.\n\n"  
-        "Sentence: I love the new design of the app.\n"  
-        "Sentiment: Positive\n\n"  
-        "Sentence: The update broke the login feature.\n"  
-        "Sentiment: Negative\n\n"  
-        f"Sentence: {text}\n"  
-        "Sentiment:"  
+        "Extract the product name and price from a description.\n"  
+        "Example 1:\n"  
+        "Description: \"The Acme Super Blender costs $99.99 and comes with a 2‑year warranty.\"\n"  
+        "Answer: {\"product\": \"Acme Super Blender\", \"price\": 99.99}\n\n"  
+        "Example 2:\n"  
+        "Description: \"Enjoy the fresh taste of Sunny Citrus Juice, now only $3.49 per bottle.\"\n"  
+        "Answer: {\"product\": \"Sunny Citrus Juice\", \"price\": 3.49}\n\n"  
+        "Now process the following description:\n"  
+        f"Description: \"{user_query}\"\n"  
+        "Answer:"  
     )  
 
     response = openai.ChatCompletion.create(  
         model="gpt-4",  
         messages=[{"role": "user", "content": prompt}],  
-        temperature=0.0,          # Low temperature for deterministic output  
-        max_tokens=10,            # Only need a short label  
-        top_p=1,  
-        n=1,  
-        stop=["\n"]               # Stop at the end of the label line  
+        temperature=0,          # deterministic output  
+        max_tokens=100,         # limit token usage  
+        top_p=1,                # standard nucleus sampling  
+        frequency_penalty=0,  
+        presence_penalty=0  
     )  
 
-    # Extract the model's answer and strip whitespace  
-    sentiment = response.choices[0].message["content"].strip()  
-    return sentiment  
+    # Return the model's raw answer text  
+    return response.choices[0].message["content"].strip()  
 
 # Example usage  
-sample = "The tutorial was okay, not great but helpful enough."  
-print(f"Input: {sample}")  
-print("Predicted sentiment:", classify_sentiment(sample))
+query = "The ZenBook Pro 14-inch laptop is now priced at $1,299.00 with free shipping."  
+print(few_shot_completion(query))  
 */
 
