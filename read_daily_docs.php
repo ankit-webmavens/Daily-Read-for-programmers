@@ -1,262 +1,251 @@
 <?php
-// 2026-08-22 02:38:40
+// 2026-08-23 02:48:03
 
 /* PHP
-Topic: PHP PDO (PHP Data Objects) – Secure Database Interaction  
+Topic: PHP PDO Prepared Statements
 
 Explanation:  
-- PDO provides a uniform interface for accessing many different database systems from PHP.  
-- It supports prepared statements, which separate SQL code from data and protect against SQL injection.  
-- By using named or positional placeholders, you can bind variables safely and reuse the same statement multiple times.  
-- PDO offers error handling options, including throwing exceptions for easier debugging.  
-- It also allows you to fetch results in various formats such as associative arrays, objects, or numeric arrays.  
+Prepared statements separate SQL code from data, protecting against SQL injection attacks.  
+PDO (PHP Data Objects) provides a consistent interface for working with many database systems.  
+You prepare the query once, bind parameters, and then execute it multiple times with different values.  
+This approach also improves performance when the same statement is executed repeatedly.  
+Error handling with exceptions allows you to catch and manage database errors cleanly.
 
 Code example with comments:  
 
 <?php
-// Database connection parameters
+// Create a new PDO instance with DSN, username, and password
 $dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
 $username = 'dbuser';
 $password = 'dbpass';
 
 try {
-    // Create a new PDO instance and connect to the database
-    $pdo = new PDO($dsn, $username, $password);
-    // Set PDO to throw exceptions on error for better error handling
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    // Enable exceptions for error handling
+    $pdo = new PDO($dsn, $username, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+    ]);
 
-    // Prepare a SELECT statement with a named placeholder
-    $stmt = $pdo->prepare('SELECT id, name FROM users WHERE email = :email');
-    
-    // Define the value to bind to the placeholder
-    $email = 'example@example.com';
-    // Bind the PHP variable $email to the placeholder :email
-    $stmt->bindParam(':email', $email);
-    
-    // Execute the prepared statement
-    $stmt->execute();
-    
-    // Fetch the result as an associative array
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    // Output the retrieved user data
-    print_r($user);
+    // Prepare an INSERT statement with named placeholders
+    $stmt = $pdo->prepare('INSERT INTO users (username, email) VALUES (:username, :email)');
+
+    // Bind values to the placeholders and execute
+    $stmt->execute([
+        ':username' => 'alice',
+        ':email'    => 'alice@example.com'
+    ]);
+
+    // You can reuse the same prepared statement with different data
+    $stmt->execute([
+        ':username' => 'bob',
+        ':email'    => 'bob@example.com'
+    ]);
+
+    echo "Records inserted successfully.";
 } catch (PDOException $e) {
-    // If a database error occurs, display the error message
+    // Handle any errors that occur during the database operations
     echo 'Database error: ' . $e->getMessage();
 }
 ?>
 */
 
 /* Laravel
-Laravel Topic: Service Container & Automatic Dependency Injection  
+Topic: Laravel Queues and Jobs
 
 Explanation:  
-The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. When a class type‑hint is declared in a controller or other class constructor, the container resolves the required instance without manual instantiation. This promotes loose coupling and makes testing easier because concrete implementations can be swapped via bindings. You can bind interfaces to concrete classes in a service provider to control which implementation is injected. The container also supports contextual bindings, allowing different implementations based on where the dependency is resolved.
+Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or interacting with external APIs to a background worker. This improves response time for end users because the request can finish while the job runs asynchronously. Queues are configured with drivers like database, Redis, or Amazon SQS, and each job class defines a handle method that contains the work to be performed. You can dispatch jobs directly from controllers, events, or any other part of the application. Laravel also provides built-in retry, timeout, and failure handling mechanisms to make background processing reliable.
 
-Code Example (plain PHP with inline comments):  
+Code example (Job class and dispatching it):
 
+<?php
+namespace App\Jobs;
+
+use App\Mail\WelcomeMail;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Mail;
+
+class SendWelcomeEmail implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public $user;   // The user instance that will receive the email
+
+    // Constructor receives data needed for the job
+    public function __construct($user)
+    {
+        $this->user = $user;
+    }
+
+    // This method is called by the queue worker
+    public function handle()
+    {
+        // Build and send the welcome email
+        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
+    }
+
+    // Optional: define how many times the job may be attempted
+    public $tries = 3;
+
+    // Optional: define the number of seconds the job can run before it times out
+    public $timeout = 120;
+}
+
+// Dispatching the job from a controller method
 <?php
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Contracts\PaymentGateway;   // Interface
-use Illuminate\Http\Request;
+use App\Jobs\SendWelcomeEmail;
+use App\Models\User;
 
-// Laravel will automatically inject the concrete class bound to PaymentGateway
-class CheckoutController extends Controller
+class RegistrationController extends Controller
 {
-    protected $gateway;
-
-    // Constructor receives the dependency
-    public function __construct(PaymentGateway $gateway)
+    public function register(Request $request)
     {
-        $this->gateway = $gateway;   // Assigned for later use
-    }
+        // Validate and create the user...
+        $user = User::create($request->only(['name', 'email', 'password']));
 
-    public function process(Request $request)
-    {
-        $amount = $request->input('amount');
-        // Use the injected gateway to charge the customer
-        $result = $this->gateway->charge($amount);
+        // Dispatch the email job to the default queue
+        SendWelcomeEmail::dispatch($user);
 
-        if ($result->successful()) {
-            return response()->json(['status' => 'success']);
-        }
-
-        return response()->json(['status' => 'failed'], 422);
-    }
-}
-
-// ------------------------------------------------------------
-// Service Provider binding the interface to a concrete class
-namespace App\Providers;
-
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripePaymentGateway;   // Concrete implementation
-
-class PaymentServiceProvider extends ServiceProvider
-{
-    public function register()
-    {
-        // Bind the interface to the Stripe implementation
-        $this->app->bind(PaymentGateway::class, function ($app) {
-            // You could pull config values here, e.g., API keys
-            return new StripePaymentGateway(config('services.stripe.secret'));
-        });
-    }
-}
-
-// ------------------------------------------------------------
-// Example interface
-namespace App\Contracts;
-
-interface PaymentGateway
-{
-    public function charge(float $amount);
-}
-
-// ------------------------------------------------------------
-// Example concrete implementation
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-use Stripe\StripeClient;
-
-class StripePaymentGateway implements PaymentGateway
-{
-    protected $client;
-
-    public function __construct(string $secretKey)
-    {
-        $this->client = new StripeClient($secretKey);   // Stripe SDK client
-    }
-
-    public function charge(float $amount)
-    {
-        // Simplified charge logic
-        return $this->client->charges->create([
-            'amount' => $amount * 100,   // Convert to cents
-            'currency' => 'usd',
-            'source' => 'tok_visa',      // Test token
-            'description' => 'Laravel Charge',
-        ]);
+        return response()->json(['message' => 'Registration successful.']);
     }
 }
 ?>
 */
 
 /* MySQL
-MySQL Topic: Stored Procedures
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
-Explanation:
-Stored procedures are precompiled SQL routines stored in the database that can be invoked repeatedly with different parameters.  
-They encapsulate complex logic, allowing for modular, reusable code and reducing network traffic between application and server.  
-Procedures can contain control‑flow statements (IF, LOOP, WHILE) and can return result sets or output parameters.  
-Using stored procedures improves security by limiting direct table access and enables permission granularity.  
-They are created with the CREATE PROCEDURE statement and executed with CALL.
+Explanation: 
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. 
+MySQL supports both non‑recursive and recursive CTEs, enabling you to write clearer and more maintainable queries. 
+Recursive CTEs are especially useful for traversing hierarchical data such as organizational charts or category trees. 
+The CTE is defined using the WITH clause, and the recursion terminates when the anchor query no longer produces new rows. 
+You can reference the CTE multiple times in the outer query, treating it like a regular table or view.
 
-Code example (with comments):
+Code example with comments:
+-- Create a sample table to hold an employee hierarchy
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(50),
+    manager_id INT NULL   -- NULL for top‑level manager
+);
 
-CREATE PROCEDURE GetEmployeeSales (IN emp_id INT, OUT total_sales DECIMAL(10,2))
-BEGIN
-    -- Initialize the output variable
-    SET total_sales = 0.00;
-    
-    -- Calculate total sales for the given employee
-    SELECT SUM(amount) INTO total_sales
-    FROM sales
-    WHERE employee_id = emp_id;
-    
-    -- If the employee has no sales, ensure total_sales is zero
-    IF total_sales IS NULL THEN
-        SET total_sales = 0.00;
-    END IF;
-END;
+-- Insert sample data
+INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
+(1, 'Alice', NULL),      -- top‑level manager
+(2, 'Bob', 1),
+(3, 'Carol', 1),
+(4, 'Dave', 2),
+(5, 'Eve', 2),
+(6, 'Frank', 3);
 
--- To invoke the procedure and retrieve the result:
-CALL GetEmployeeSales(7, @sales);
-SELECT @sales AS EmployeeTotalSales;
+-- Recursive CTE to list each employee with their management chain depth
+WITH RECURSIVE emp_hierarchy AS (
+    -- Anchor member: start with top‑level managers (no manager_id)
+    SELECT 
+        emp_id,
+        emp_name,
+        manager_id,
+        1 AS level   -- root level
+    FROM employees
+    WHERE manager_id IS NULL
+
+    UNION ALL
+
+    -- Recursive member: join employees to their direct reports
+    SELECT 
+        e.emp_id,
+        e.emp_name,
+        e.manager_id,
+        eh.level + 1 AS level
+    FROM employees e
+    INNER JOIN emp_hierarchy eh ON e.manager_id = eh.emp_id
+)
+SELECT 
+    emp_id,
+    emp_name,
+    manager_id,
+    level
+FROM emp_hierarchy
+ORDER BY level, emp_id;
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: Closures in JavaScript
 
-Explanation:
-- A closure is a function that retains access to the variables in its lexical scope even after that outer function has finished executing.  
-- It enables inner functions to reference and manipulate variables defined in the outer function after the outer function returns.  
-- Closures are created each time a function is defined, providing a way to encapsulate private data.  
-- They are commonly used for module patterns, callbacks, and preserving state in asynchronous operations.  
-- Proper use of closures helps avoid bugs such as unintentionally sharing variables across loop iterations or callbacks.  
+Explanation:  
+A closure is a function that retains access to the variables from its lexical scope even after that outer function has finished executing. This allows the inner function to remember the environment in which it was created, enabling data encapsulation and private state. Closures are created every time a function is defined, and they capture the variables they reference. They are frequently used for module patterns, currying, and event handlers. Understanding closures helps avoid common pitfalls such as unintended variable sharing across iterations.
 
-Code example with comments:
-function makeCounter() {               // outer function creates a private variable
-    let count = 0;                     // this variable is scoped to makeCounter
-    return function() {               // inner function forms a closure over count
-        count++;                       // modifies the closed‑over variable
-        console.log(count);           // outputs the current count
-    };
-}
-const counterA = makeCounter();        // counterA has its own closure with its own count
-counterA(); // 1
-counterA(); // 2
-const counterB = makeCounter();        // counterB gets a separate closure and count
-counterB(); // 1
-counterA(); // 3   // counterA continues its own sequence independently of counterB
+Code example with comments:  
+function makeCounter(initialValue) {  
+    let count = initialValue; // private variable, not accessible from outside  
+
+    // The inner function forms a closure over `count`  
+    return function() {  
+        count += 1;          // modifies the captured variable  
+        return count;        // returns the updated value  
+    };  
+}  
+
+// Create two independent counters  
+const counterA = makeCounter(0);  
+const counterB = makeCounter(10);  
+
+console.log(counterA()); // 1  
+console.log(counterA()); // 2  
+console.log(counterB()); // 11  
+console.log(counterB()); // 12   // each counter maintains its own private `count` variable  
 */
 
 /* AI
-Topic: Fine‑tuning a Small Language Model with Hugging Face Transformers  
+Topic: Few-Shot Prompt Engineering with the OpenAI GPT‑4 API
 
 Explanation:  
-- Fine‑tuning adapts a pre‑trained language model to a specific domain or task using a modest dataset.  
-- The process involves loading a base model, adding a classification head (or other task‑specific layers), and training on labeled examples.  
-- Hugging Face’s Trainer API abstracts most of the boilerplate, handling tokenization, batching, and evaluation automatically.  
-- This approach yields a model that retains general language understanding while specializing in the target domain.  
-- It is suitable for developers who need custom NLP capabilities without training a model from scratch.  
+Few‑shot prompting supplies the model with a handful of example input‑output pairs before the actual query, guiding it toward the desired behavior without any fine‑tuning. By carefully crafting the examples, you can shape the style, format, or domain of the response. This technique works well for tasks like translation, code generation, or data extraction, where the model can infer the pattern from the demos. The prompt is passed as a single string to the ChatCompletion endpoint, and the model completes the next instance. Adjusting temperature and max_tokens helps control creativity and length of the output.
 
-Code example (Python):
+Code example (Python, using the OpenAI API):
+import os
+import openai
 
-import torch
-from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
+# Load your API key from an environment variable for security
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Load a small pre‑trained model and its tokenizer
-model_name = "distilbert-base-uncased"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
+def get_completion(prompt: str) -> str:
+    # Call the ChatCompletion endpoint with the constructed prompt
+    response = openai.ChatCompletion.create(
+        model="gpt-4",                       # Choose the appropriate model
+        messages=[{"role": "system", "content": "You are a helpful assistant."},
+                  {"role": "user",   "content": prompt}],
+        temperature=0.7,                     # Balance between deterministic and creative output
+        max_tokens=200                       # Limit the length of the response
+    )
+    # Extract and return the text part of the assistant's reply
+    return response["choices"][0]["message"]["content"].strip()
 
-# Load a sample dataset (e.g., sentiment analysis) and tokenize it
-raw_dataset = load_dataset("imdb", split="train[:1%]")   # tiny subset for demo
-def tokenize(batch):
-    return tokenizer(batch["text"], padding="max_length", truncation=True, max_length=128)
-tokenized_dataset = raw_dataset.map(tokenize, batched=True)
-tokenized_dataset = tokenized_dataset.rename_column("label", "labels")
-tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
+# Few‑shot prompt template for English‑to‑French translation
+few_shot_template = """
+Q: Translate the following English sentence to French.
+A: The cat sits on the mat. -> Le chat s'assoit sur le tapis.
 
-# Define training arguments
-training_args = TrainingArguments(
-    output_dir="./fine_tuned_model",
-    num_train_epochs=2,
-    per_device_train_batch_size=8,
-    learning_rate=5e-5,
-    logging_steps=10,
-    evaluation_strategy="no",
-    save_strategy="no"
-)
+Q: Translate the following English sentence to French.
+A: The sky is blue. -> Le ciel est bleu.
 
-# Initialize Trainer with model, data, and arguments
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=tokenized_dataset
-)
+Q: Translate the following English sentence to French.
+A: {sentence}
+"""
 
-# Start fine‑tuning
-trainer.train()
+# Sentence we want translated
+sentence = "Artificial intelligence is transforming the world."
 
-# Save the fine‑tuned model for later inference
-trainer.save_model("./fine_tuned_model")
+# Insert the target sentence into the prompt
+filled_prompt = few_shot_template.format(sentence=sentence)
+
+# Get and print the model's translation
+print(get_completion(filled_prompt))
 */
 
