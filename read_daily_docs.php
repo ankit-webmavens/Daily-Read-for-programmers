@@ -1,112 +1,105 @@
 <?php
-// 2026-08-25 02:43:06
+// 2026-08-26 02:50:54
 
 /* PHP
-Topic: Prepared Statements using PDO in PHP  
+Topic: Prepared Statements with PDO  
 
 Explanation:  
-Prepared statements separate the SQL query structure from the data values, which prevents SQL injection attacks and can improve performance when the same query is executed multiple times. PDO (PHP Data Objects) provides a consistent interface for database access across many drivers, making it easy to switch databases without changing code. With PDO you first prepare the statement, then bind parameters (by value or by reference) and finally execute it. Errors can be handled through exceptions, allowing clean error management. This approach also enables the use of named or positional placeholders for clearer, more maintainable code.  
+Prepared statements separate the SQL query from its data values, which prevents SQL injection attacks. PDO (PHP Data Objects) provides a consistent API for interacting with many database systems, making it easier to write portable code. When a statement is prepared, the database parses the query once and can reuse it multiple times with different parameters, improving performance. Binding values to placeholders ensures that the data is correctly escaped and typed. This approach also simplifies handling of complex queries and bulk inserts.  
 
 Code example:  
-<?php  
-// Create a PDO connection (replace DSN, username, password with real values)  
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';  
-$user = 'dbuser';  
-$pass = 'dbpass';  
 
-$options = [  
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors  
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch results as associative arrays  
-];  
+<?php
+// Create a new PDO connection (replace DSN, username, and password with your own values)
+$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass');
 
-$pdo = new PDO($dsn, $user, $pass, $options);  
+// Enable exceptions for error handling
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-// Prepare an INSERT statement with named placeholders  
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';  
-$stmt = $pdo->prepare($sql);  
+// Prepare an INSERT statement with named placeholders
+$stmt = $pdo->prepare('INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)');
 
-// Bind values to the placeholders  
-$username = 'alice';  
-$email = 'alice@example.com';  
-$stmt->bindParam(':username', $username, PDO::PARAM_STR);  
-$stmt->bindParam(':email', $email, PDO::PARAM_STR);  
+// Bind values to the placeholders
+$username   = 'johndoe';
+$email      = 'john@example.com';
+$created_at = date('Y-m-d H:i:s');
 
-// Execute the prepared statement  
-$stmt->execute();  
+// Execute the statement with the bound parameters
+$stmt->execute([
+    ':username'   => $username,
+    ':email'      => $email,
+    ':created_at' => $created_at
+]);
 
-// Output the ID of the newly inserted row  
-echo 'New user ID: ' . $pdo->lastInsertId();  
+// Fetch the ID of the newly inserted row
+$lastId = $pdo->lastInsertId();
+echo "New user ID: " . $lastId;
 ?>
 */
 
 /* Laravel
-Laravel Service Container (IoC Container)
+Laravel Service Container & Dependency Injection
 
-The Laravel Service Container is a powerful tool for managing class dependencies and performing dependency injection. It resolves objects automatically, allowing you to type‑hint dependencies in constructors or controller methods without manually instantiating them. You can bind abstractions to concrete implementations, enabling flexible swapping of services (e.g., different payment gateways). The container also supports contextual binding, singleton bindings, and automatic resolution of nested dependencies. Understanding the Service Container is essential for writing clean, testable, and maintainable Laravel applications.
+Explanation:  
+The Laravel service container is a powerful tool that manages class dependencies and performs automatic injection. It resolves objects, injects them where needed, and allows you to bind abstractions to concrete implementations. By type‑hinting dependencies in a controller or any class, the container will automatically instantiate and inject the required objects. This promotes loose coupling, easier testing, and cleaner code. You can also bind singleton instances or contextual bindings for more control over resolution.
 
-<?php
-// app/Providers/AppServiceProvider.php
-namespace App\Providers;
+Code example (app/Providers/AppServiceProvider.php):
 
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;          // abstraction
-use App\Services\StripePaymentGateway;    // concrete implementation
-
-class AppServiceProvider extends ServiceProvider
+public function register()
 {
-    public function register()
-    {
-        // Bind the contract to a concrete class so the container knows what to resolve
-        $this->app->bind(PaymentGateway::class, function ($app) {
-            // You could read config or environment variables here
-            $apiKey = config('services.stripe.secret');
-            return new StripePaymentGateway($apiKey);
-        });
+    // Bind an interface to a concrete class so the container knows how to resolve it
+    $this->app->bind(
+        App\Contracts\PaymentGateway::class,
+        App\Services\StripePaymentGateway::class
+    );
 
-        // Example of a singleton binding (only one instance throughout the app)
-        $this->app->singleton('logger', function ($app) {
-            return new \Monolog\Logger('app');
-        });
-    }
+    // Register a singleton that should be shared across the entire request lifecycle
+    $this->app->singleton('logger', function ($app) {
+        return new Monolog\Logger('app', [
+            new Monolog\Handler\StreamHandler(storage_path('logs/app.log'))
+        ]);
+    });
 }
 
-// app/Http/Controllers/OrderController.php
-namespace App\Http\Controllers;
+// Example controller using automatic dependency injection (app/Http/Controllers/OrderController.php)
 
-use App\Contracts\PaymentGateway;   // type‑hint the abstraction
+use App\Contracts\PaymentGateway;
 use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
-    protected $paymentGateway;
+    protected $gateway;
 
-    // Laravel automatically injects the bound implementation
-    public function __construct(PaymentGateway $paymentGateway)
+    // The service container injects the concrete implementation of PaymentGateway
+    public function __construct(PaymentGateway $gateway)
     {
-        $this->paymentGateway = $paymentGateway;
+        $this->gateway = $gateway; // now $gateway is an instance of StripePaymentGateway
     }
 
     public function store(Request $request)
     {
-        $orderData = $request->all();
+        // Use the injected gateway to process payment
+        $result = $this->gateway->charge($request->amount, $request->payment_method);
 
-        // Use the injected payment gateway to process payment
-        $this->paymentGateway->charge($orderData['amount'], $orderData['currency']);
+        // Retrieve the shared logger singleton
+        $logger = app('logger');
+        $logger->info('Payment processed', ['result' => $result]);
 
-        // Continue with order creation...
-        return response()->json(['status' => 'order created']);
+        return response()->json(['status' => 'success', 'data' => $result]);
     }
 }
 
-// app/Contracts/PaymentGateway.php
+// Interface definition (app/Contracts/PaymentGateway.php)
+
 namespace App\Contracts;
 
 interface PaymentGateway
 {
-    public function charge(float $amount, string $currency);
+    public function charge(float $amount, string $paymentMethod);
 }
 
-// app/Services/StripePaymentGateway.php
+// Concrete implementation (app/Services/StripePaymentGateway.php)
+
 namespace App\Services;
 
 use App\Contracts\PaymentGateway;
@@ -116,141 +109,128 @@ class StripePaymentGateway implements PaymentGateway
 {
     protected $stripe;
 
-    public function __construct(string $apiKey)
+    public function __construct()
     {
-        $this->stripe = new StripeClient($apiKey);
+        // Initialize Stripe client with secret key from config
+        $this->stripe = new StripeClient(config('services.stripe.secret'));
     }
 
-    public function charge(float $amount, string $currency)
+    public function charge(float $amount, string $paymentMethod)
     {
-        // Perform the charge using Stripe's SDK
-        $this->stripe->charges->create([
-            'amount' => $amount * 100, // Stripe expects amount in cents
-            'currency' => $currency,
-            'source' => 'tok_visa',    // placeholder source token
+        // Perform charge using Stripe API
+        return $this->stripe->charges->create([
+            'amount' => $amount * 100, // convert to cents
+            'currency' => 'usd',
+            'source' => $paymentMethod,
+            'description' => 'Order payment',
         ]);
     }
 }
-?>
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures
+Topic: Common Table Expressions (CTEs) and Recursive Queries  
 
 Explanation:  
-A stored procedure is a named set of SQL statements that are stored in the database server and can be executed repeatedly.  
-It allows you to encapsulate complex logic, reduce network traffic, and improve performance by executing on the server side.  
-Parameters can be passed in and out, enabling flexible reuse of the same routine with different data.  
-Procedures support control‑flow constructs such as IF, LOOP, and WHILE, making them suitable for procedural programming tasks.  
-They are especially useful for enforcing business rules, data validation, and batch processing within MySQL.
+A Common Table Expression (CTE) is a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and improves readability by allowing you to break complex queries into logical building blocks. CTEs can be recursive, meaning the CTE can refer to itself to process hierarchical or graph‑structured data such as organizational charts or tree traversals. Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly references the CTE until no new rows are produced. They are evaluated before the main query, and their scope is limited to that single statement.  
 
-Code example:
-CREATE DATABASE IF NOT EXISTS demo_db;
-USE demo_db;
-
--- Create a sample table
-CREATE TABLE IF NOT EXISTS orders (
-    order_id INT AUTO_INCREMENT PRIMARY KEY,
-    customer_name VARCHAR(100),
-    order_total DECIMAL(10,2),
-    order_date DATE
-);
-
--- Drop the procedure if it already exists
-DROP PROCEDURE IF EXISTS AddOrder;
-
--- Define a stored procedure to insert a new order
-DELIMITER $$
-
-CREATE PROCEDURE AddOrder (
-    IN p_customer_name VARCHAR(100),
-    IN p_order_total DECIMAL(10,2),
-    IN p_order_date DATE
-)
-BEGIN
-    -- Insert the new row into the orders table
-    INSERT INTO orders (customer_name, order_total, order_date)
-    VALUES (p_customer_name, p_order_total, p_order_date);
-END$$
-
-DELIMITER ;
-
--- Call the procedure with sample data
-CALL AddOrder('Alice Johnson', 250.75, '2024-09-15');
-CALL AddOrder('Bob Smith', 120.00, '2024-09-16');
-
--- Verify the inserted rows
-SELECT * FROM orders;
+Code example (recursive CTE to list an employee hierarchy):  
+-- Define a recursive CTE named employee_hierarchy  
+WITH RECURSIVE employee_hierarchy AS (  
+    -- Anchor member: start with the top‑level manager (e.g., CEO with id = 1)  
+    SELECT id, name, manager_id, 1 AS level  
+    FROM employees  
+    WHERE id = 1  
+    UNION ALL  
+    -- Recursive member: join each employee to their direct reports  
+    SELECT e.id, e.name, e.manager_id, eh.level + 1 AS level  
+    FROM employees e  
+    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.id  
+)  
+-- Use the CTE to retrieve the full hierarchy ordered by level  
+SELECT id, name, manager_id, level  
+FROM employee_hierarchy  
+ORDER BY level, name;  
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: Closures in JavaScript  
 
 Explanation:  
-A closure is a function that retains access to its lexical environment even after the outer function has finished executing. This means the inner function can reference variables defined in the outer scope, preserving their values across calls. Closures enable data encapsulation, allowing private state without exposing it globally. They are commonly used for factory functions, event handlers, and module patterns. Understanding closures is essential for managing asynchronous code and avoiding common pitfalls like unintended shared references.
+A closure is created when an inner function accesses variables from an outer function that has already finished execution. The inner function retains a reference to the outer scope’s variables, allowing them to persist beyond the outer function’s lifetime. Closures are useful for data encapsulation, creating private state, and implementing function factories. They enable patterns such as memoization, currying, and module-like structures without native classes. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state across calls.
 
-Code example with comments:
-function createCounter(initialValue) {                     // outer function, creates a counter
-    let count = initialValue;                             // private variable, not accessible outside
+Code example:  
+function makeCounter(start) {          // outer function with a private variable  
+    let count = start;                 // this variable is captured by the inner function  
 
-    return function increment(step = 1) {                 // inner function forms a closure
-        count += step;                                    // accesses and updates the outer variable
-        console.log('Current count:', count);            // side‑effect: logs the current value
-        return count;                                    // returns the updated count
-    };
-}
+    return function() {               // the inner function forms a closure  
+        count += 1;                    // modifies the captured variable  
+        return count;                  // returns the updated count  
+    };                                 // end of inner function  
+}                                      // end of outer function  
 
-const counterA = createCounter(0); // first independent counter
-counterA();        // Current count: 1
-counterA(5);       // Current count: 6
+const counterA = makeCounter(0);        // each call creates a separate closure  
+const counterB = makeCounter(10);  
 
-const counterB = createCounter(10); // second independent counter with its own private state
-counterB();        // Current count: 11
-counterB(2);       // Current count: 13
-
-// The two counters do not interfere with each other's "count" variable because each closure
-// captures its own lexical environment. This demonstrates how closures provide encapsulated
-// state in JavaScript.
+console.log(counterA()); // 1  
+console.log(counterA()); // 2  
+console.log(counterB()); // 11  
+console.log(counterB()); // 12   // counterA and counterB maintain independent private state.
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
+Topic: Few‑Shot Prompt Engineering for Text Classification with GPT‑4  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small set of example inputs and desired outputs within the same request, guiding it to produce consistent results on new queries. This technique works well for tasks like text classification, data extraction, or style transfer without fine‑tuning. By structuring the prompt as a sequence of user‑assistant message pairs, you can illustrate the pattern you expect the model to follow. The approach is lightweight, requires no additional training data, and can be adapted on the fly for different domains. It is especially useful for developers who need quick, controllable AI behavior in scripts or web services.
+Few‑shot prompting lets you teach a language model a new task by providing a handful of input‑output examples directly in the prompt, eliminating the need for fine‑tuning. By carefully formatting the examples and using clear separators, the model can infer the desired pattern and apply it to unseen inputs. This technique works especially well for classification tasks where the label set is small and the domain is well‑defined. Adjusting temperature, max tokens, and the “stop” sequence helps keep responses concise and consistent. Prompt engineering also includes experimenting with role‑based messages (system, user, assistant) to steer the model’s behavior.
 
-Code example (Python, using the openai library):
+Code example (Python, OpenAI API) – builds a few‑shot prompt for sentiment analysis and calls GPT‑4:
 
 import os
 import openai
 
-# Load your API key from an environment variable
+# Load your API key from environment variable or other secure store
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def classify_sentiment(text):
-    # Build a few‑shot prompt with two examples and the new input
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant that classifies sentiment as Positive, Negative, or Neutral."},
-        {"role": "user", "content": "I love the new design of the app!"},
-        {"role": "assistant", "content": "Positive"},
-        {"role": "user", "content": "The update caused many bugs and crashes."},
-        {"role": "assistant", "content": "Negative"},
-        {"role": "user", "content": text}  # New text to classify
-    ]
+    """
+    Sends a few‑shot prompt to GPT‑4 to classify the sentiment of `text`.
+    Returns one of: Positive, Negative, Neutral.
+    """
+    # Construct the prompt with three labeled examples and the new input
+    prompt = """Classify the sentiment of the following sentences as Positive, Negative, or Neutral.
+
+Example 1:
+Sentence: I love the new design of this app!
+Sentiment: Positive
+
+Example 2:
+Sentence: The update caused several crashes and bugs.
+Sentiment: Negative
+
+Example 3:
+Sentence: The battery life is okay, not great but acceptable.
+Sentiment: Neutral
+
+Now classify this sentence:
+Sentence: """ + text + """
+Sentiment:"""
 
     response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",          # Choose a cost‑effective model
-        messages=messages,
-        temperature=0.0,               # Deterministic output for classification
-        max_tokens=5                   # Only need a short label
+        model="gpt-4o-mini",               # lightweight GPT‑4 variant suitable for prompts
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,                    # deterministic output for classification
+        max_tokens=10,                      # we only need the short label
+        stop=["\n"]                         # stop at line break to avoid extra text
     )
-
-    # The assistant's reply contains the sentiment label
+    # Extract the model's answer, strip whitespace
     sentiment = response.choices[0].message.content.strip()
     return sentiment
 
 # Example usage
-sample = "The service was okay, nothing exceptional."
-print(f"Sentiment: {classify_sentiment(sample)}")   # Expected output: Neutral or similar.
+if __name__ == "__main__":
+    test_sentence = "The customer service was helpful but the wait time was long."
+    print(f"Input: {test_sentence}")
+    print(f"Predicted sentiment: {classify_sentiment(test_sentence)}")
 */
 
