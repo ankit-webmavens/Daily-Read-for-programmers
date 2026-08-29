@@ -1,247 +1,229 @@
 <?php
-// 2026-08-28 13:19:41
+// 2026-08-29 08:16:35
 
 /* PHP
-Topic: Prepared Statements with PDO (PHP Data Objects)
+Topic: Using PDO (PHP Data Objects) for Secure Database Interactions  
 
-Explanation:
-Prepared statements separate SQL code from data, which prevents SQL injection attacks. PDO provides a consistent interface for many database systems, making the code portable. You first prepare the SQL with placeholders, then bind values and execute the statement. The database parses the query only once, improving performance for repeated executions. Errors can be handled via exceptions, giving clear feedback during development.
+Explanation:  
+PDO provides a uniform interface for accessing many different databases, allowing you to write portable code. It supports prepared statements, which protect against SQL injection by separating query structure from data. Connections are established via a DSN string, and errors can be handled using exceptions for cleaner debugging. PDO also offers transaction support, enabling multiple queries to be committed or rolled back as a single unit. Using PDO encourages best practices like binding parameters and setting appropriate fetch modes.
 
 Code example with comments:
 <?php
-// Create a new PDO instance for a MySQL database
-$dsn = 'mysql:host=localhost;dbname=example_db;charset=utf8mb4';
-$username = 'db_user';
-$password = 'db_pass';
+// Enable exception mode for PDO errors
 $options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch rows as associative arrays
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ];
-$pdo = new PDO($dsn, $username, $password, $options);
 
-// SQL with named placeholders
-$sql = 'INSERT INTO users (email, password_hash, created_at) VALUES (:email, :hash, NOW())';
+// Data source name (DSN) for a MySQL database
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'secret';
 
-// Prepare the statement once
-$stmt = $pdo->prepare($sql);
+try {
+    // Create a new PDO instance
+    $pdo = new PDO($dsn, $username, $password, $options);
 
-// Sample data to insert
-$email = 'alice@example.com';
-$plainPassword = 'Secret123!';
-$hash = password_hash($plainPassword, PASSWORD_BCRYPT);
+    // Begin a transaction
+    $pdo->beginTransaction();
 
-// Bind values to the placeholders and execute
-$stmt->bindParam(':email', $email);
-$stmt->bindParam(':hash', $hash);
-$stmt->execute();
+    // Prepare an INSERT statement with named placeholders
+    $stmt = $pdo->prepare('INSERT INTO users (email, password) VALUES (:email, :password)');
 
-// If you need the ID of the inserted row
-$insertedId = $pdo->lastInsertId();
-echo "New user ID: " . $insertedId . PHP_EOL;
+    // Bind values to the placeholders and execute
+    $stmt->execute([
+        ':email'    => 'alice@example.com',
+        ':password' => password_hash('myP@ssw0rd', PASSWORD_BCRYPT),
+    ]);
+
+    // Commit the transaction
+    $pdo->commit();
+
+    echo "User added successfully.\n";
+} catch (PDOException $e) {
+    // Roll back the transaction if something went wrong
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    // Output the error message
+    echo "Database error: " . $e->getMessage() . "\n";
+}
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container Binding (Interface to Implementation)
+Topic: Laravel Service Container & Dependency Injection
 
-Explanation:
-The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection. By binding an interface to a concrete implementation, you can type‑hint the interface in your controllers or services and let the container resolve the appropriate class automatically. This promotes loose coupling and makes testing easier, as you can swap the implementation with a mock. Bindings are typically defined in a service provider's register method. When the container resolves a class, it reads the binding and injects the bound implementation.
+Explanation:  
+The Laravel service container is a powerful tool that manages class dependencies and performs automatic resolution. It allows you to bind abstractions to concrete implementations, enabling loose coupling and easier testing. When a class requires a dependency, Laravel can inject it automatically via constructor or method injection. You can register bindings in service providers, specifying how the container should build an object. This mechanism makes your code more modular, maintainable, and adheres to the SOLID principles.
 
-Code example:
+Code example (app/Providers/AppServiceProvider.php):
 <?php
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;          // Interface
-use App\Services\StripePaymentGateway;    // Concrete class
+use App\Contracts\PaymentGateway;
+use App\Services\StripeGateway;
 
 class AppServiceProvider extends ServiceProvider
 {
+    // Register bindings in the container
     public function register()
     {
-        // Bind the PaymentGateway interface to the Stripe implementation
+        // Bind the PaymentGateway contract to the StripeGateway implementation
         $this->app->bind(PaymentGateway::class, function ($app) {
-            // You could pull configuration values here if needed
-            $apiKey = config('services.stripe.secret');
-            return new StripePaymentGateway($apiKey);
+            // You can resolve configuration values from the container
+            $apiKey = config('services.stripe.key');
+            return new StripeGateway($apiKey);
         });
     }
-}
 
-// In a controller or any class resolved by the container
+    public function boot()
+    {
+        // No boot logic needed for this example
+    }
+}
+?>
+
+Code example (app/Http/Controllers/OrderController.php):
+<?php
 namespace App\Http\Controllers;
 
 use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
 
-class CheckoutController extends Controller
+class OrderController extends Controller
 {
-    protected $gateway;
+    protected $paymentGateway;
 
-    // Laravel will automatically inject the StripePaymentGateway instance
-    public function __construct(PaymentGateway $gateway)
+    // Constructor injection: Laravel resolves the PaymentGateway implementation automatically
+    public function __construct(PaymentGateway $paymentGateway)
     {
-        $this->gateway = $gateway;
+        $this->paymentGateway = $paymentGateway;
     }
 
-    public function store()
+    public function store(Request $request)
     {
-        // Use the injected gateway to process a payment
-        $this->gateway->charge(1000, 'usd', 'tok_visa');
-        // ...
+        // Use the injected payment gateway to process a payment
+        $amount = $request->input('amount');
+        $result = $this->paymentGateway->charge($amount);
+
+        if ($result->successful()) {
+            return response()->json(['status' => 'Payment successful']);
+        }
+
+        return response()->json(['status' => 'Payment failed'], 422);
     }
 }
-
-// Interface definition
-namespace App\Contracts;
-
-interface PaymentGateway
-{
-    public function charge(int $amount, string $currency, string $source);
-}
-
-// Concrete implementation
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-
-class StripePaymentGateway implements PaymentGateway
-{
-    protected $secretKey;
-
-    public function __construct(string $secretKey)
-    {
-        $this->secretKey = $secretKey;
-        // Initialize Stripe SDK with the secret key
-    }
-
-    public function charge(int $amount, string $currency, string $source)
-    {
-        // Call Stripe's API to create a charge
-        // Example: \Stripe\Charge::create([...]);
-    }
-}
+?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) and Recursive Queries  
+Topic: Window Functions – Calculating a Running Total
 
-Explanation:  
-A CTE allows you to define a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement.  
-It improves readability by separating complex subqueries from the main query logic.  
-Recursive CTEs enable hierarchical data traversal, such as organizational charts or tree structures.  
-The WITH clause introduces the CTE and can be chained; the recursive part must reference the CTE name.  
-MySQL 8.0+ supports both non‑recursive and recursive CTEs, replacing older workarounds with temporary tables.  
+Explanation:
+Window functions operate on a set of rows related to the current row without collapsing the result set.  
+The OVER clause defines the window frame, allowing you to specify ordering and partitioning.  
+Using ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW creates a cumulative calculation up to each row.  
+Running totals are useful for financial reports, inventory tracking, and time‑series analysis.  
+MySQL 8.0+ supports these functions, making complex aggregations simpler and more readable.
 
-Code example with comments:  
-WITH RECURSIVE OrgChart AS (  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
-    FROM employees  
-    WHERE manager_id IS NULL          -- root of the hierarchy  
-    UNION ALL  
-    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1  
-    FROM employees e  
-    JOIN OrgChart oc ON e.manager_id = oc.employee_id  
-)  
-SELECT employee_id, manager_id, employee_name, level  
-FROM OrgChart  
-ORDER BY level, employee_name;   -- show hierarchy ordered by depth and name
+Code example:
+SELECT 
+    order_id, 
+    order_date, 
+    amount, 
+    SUM(amount) OVER (ORDER BY order_date 
+                      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_total 
+FROM orders 
+WHERE order_date >= '2024-01-01' 
+ORDER BY order_date; 
+-- SUM(amount) computes the cumulative total of the amount column 
+-- OVER defines the window: rows are ordered by order_date and the frame starts at the first row and ends at the current row 
+-- The result shows each order with its corresponding running total.
 */
 
 /* JavaScript
-Topic: Async/Await with Structured Error Handling
+Topic: JavaScript Closures  
 
 Explanation:  
-Async/Await lets you write asynchronous code that looks synchronous, improving readability.  
-When combined with try/catch blocks you can handle promise rejections in a clear, linear flow.  
-Await pauses the function until the promise settles, and any thrown error bubbles to the nearest catch.  
-Using finally allows you to run cleanup code regardless of success or failure.  
-This pattern replaces nested .then/.catch chains and makes error propagation easier to reason about.
+A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This happens because the inner function forms a lexical environment that keeps references to the outer scope’s variables. Closures are useful for data encapsulation, creating private state, and implementing function factories. They enable patterns such as memoization, currying, and module-like structures without using classes. Understanding closures is essential for writing robust asynchronous code and managing scope in JavaScript.
 
-Code Example:
-// Simulated asynchronous operation that may fail
-function fetchUser(id) {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            if (id <= 0) {
-                reject(new Error('Invalid user ID'));
-            } else {
-                resolve({ id, name: 'User' + id });
-            }
-        }, 500);
-    });
-}
+Code example with comments:  
+function makeCounter() {                     // outer function creates a private variable  
+    let count = 0;                           // this variable is not directly accessible from outside  
 
-// Async function using await and structured error handling
-async function loadUser(id) {
-    let user = null;
-    try {
-        // Await the promise; if it rejects, control jumps to catch
-        user = await fetchUser(id);
-        console.log('User data:', user);
-    } catch (err) {
-        // Handle any errors from fetchUser here
-        console.error('Failed to load user:', err.message);
-    } finally {
-        // This runs whether the try succeeded or an error was caught
-        console.log('loadUser completed for ID:', id);
-    }
-    return user;
-}
+    return function() {                      // the inner function forms a closure over `count`  
+        count += 1;                          // modifies the private variable each call  
+        return count;                        // returns the updated value  
+    };                                       // end of inner function  
 
-// Example calls
-loadUser(3);   // Successful fetch
-loadUser(-1);  // Triggers error handling
+}                                            // end of outer function  
+
+const counterA = makeCounter(); // each call to makeCounter() creates a separate closure  
+console.log(counterA()); // 1  
+console.log(counterA()); // 2  
+
+const counterB = makeCounter(); // independent counter with its own private `count`  
+console.log(counterB()); // 1  
+console.log(counterA()); // 3 (counterA's state is preserved)
 */
 
 /* AI
-Topic: Prompt Engineering for Few‑Shot Learning with OpenAI’s Chat Completion API  
+Topic: Using OpenAI’s Chat Completion API for Code Generation in Python
 
-Explanation:  
-Few‑shot prompting lets a language model learn a task from a handful of examples embedded in the prompt, without any fine‑tuning. By carefully formatting the examples and clearly separating the instruction, input, and expected output, you guide the model toward the desired behavior. This technique works well for classification, transformation, or extraction tasks where labeled data is scarce. The prompt should include a short description of the task, 2‑3 representative examples, and a placeholder for the new input. Consistent formatting (e.g., using “Input:” and “Output:”) improves reliability across different queries.
+Explanation:
+This topic explores how programmers can integrate OpenAI’s chat completion endpoint to generate code snippets on the fly. By sending a prompt that describes the desired functionality, the model returns ready-to-use Python code. The approach is useful for rapid prototyping, automating boilerplate, or learning new libraries. It demonstrates handling API keys securely, constructing request payloads, and parsing the model’s response. Error handling and token usage monitoring are also covered to keep the integration robust and cost‑effective.
 
-Code example (Python, using the OpenAI API):  
+Code Example:
+import os
+import json
+import requests
 
-import os  
-import openai  
+# Load the OpenAI API key from an environment variable (do not hard‑code it)
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise ValueError("Set the OPENAI_API_KEY environment variable")
 
-# Load your OpenAI API key from an environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Define the prompt that asks the model to write a function
+prompt = """Write a Python function `fetch_json(url: str) -> dict` that
+sends an HTTP GET request to the given URL, checks for a successful response,
+and returns the JSON payload as a dictionary. Include error handling for
+network failures and non‑JSON responses."""
 
-def classify_sentiment(text):  
-    # Define a few‑shot prompt that teaches the model how to label sentiment  
-    prompt = """You are a sentiment analysis assistant.  
-Classify the sentiment of each sentence as Positive, Negative, or Neutral.  
+# Build the request payload for the chat completion endpoint
+payload = {
+    "model": "gpt-4o-mini",                     # choose a suitable model
+    "messages": [{"role": "user", "content": prompt}],
+    "temperature": 0.2,                         # low temperature for deterministic output
+    "max_tokens": 300
+}
 
-Input: I love the new design of the app!  
-Output: Positive  
+# Send the request to OpenAI's API
+response = requests.post(
+    "https://api.openai.com/v1/chat/completions",
+    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+    data=json.dumps(payload)
+)
 
-Input: The update crashed my phone twice.  
-Output: Negative  
+# Raise an exception if the request failed
+response.raise_for_status()
 
-Input: The app loads quickly.  
-Output: Neutral  
+# Extract the generated code from the response
+generated_message = response.json()["choices"][0]["message"]["content"]
+print("Generated code:\n")
+print(generated_message)
 
-Input: {user_input}  
-Output:"""  
+# Optional: execute the generated code safely using exec in a restricted namespace
+namespace = {}
+exec(generated_message, namespace)
 
-    # Insert the user's text into the placeholder  
-    filled_prompt = prompt.format(user_input=text)  
-
-    # Call the Chat Completion endpoint with a single system message containing the prompt  
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",  
-        messages=[{"role": "user", "content": filled_prompt}],  
-        temperature=0.0,          # deterministic output for classification  
-        max_tokens=10,            # we only need the short label  
-    )  
-
-    # Extract the model's answer and strip whitespace  
-    sentiment = response.choices[0].message.content.strip()  
-    return sentiment  
-
-# Example usage  
-if __name__ == "__main__":  
-    test_sentence = "The recent bug fix made the app much smoother."  
-    print(f"Sentiment: {classify_sentiment(test_sentence)}")  
+# Verify that the function exists and test it (example URL)
+if "fetch_json" in namespace:
+    try:
+        result = namespace["fetch_json"]("https://api.github.com")
+        print("\nFunction output (first 2 keys):", list(result.keys())[:2])
+    except Exception as e:
+        print("\nError while calling generated function:", e)
 */
 
