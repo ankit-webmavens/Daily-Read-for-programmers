@@ -1,207 +1,302 @@
 <?php
-// 2026-08-30 07:18:10
+// 2026-08-31 07:33:38
 
 /* PHP
-Topic: PHP Generators (Lazy Iteration)
+Topic: Prepared Statements with PDO (PHP Data Objects)
 
 Explanation:
-- Generators allow you to create iterators without building an entire array in memory.  
-- They are defined with the `yield` keyword inside a function, returning one value at a time.  
-- Each `yield` suspends the function’s state, resuming where it left off on the next iteration.  
-- This makes them ideal for handling large data sets, streams, or infinite sequences efficiently.  
-- Generators improve performance and reduce memory usage compared to returning full collections.  
+Prepared statements let you separate SQL logic from the data that will be bound to it, which prevents SQL injection attacks and can improve performance for repeated queries. PDO provides a uniform API for different databases, so the same code works with MySQL, PostgreSQL, SQLite, etc. You first prepare the SQL with placeholders, then bind values and execute the statement. Errors can be caught with exceptions, making debugging easier. Using named placeholders makes the code more readable than positional ones.
 
-Code example with comments:
+Code example (MySQL connection and a SELECT using named placeholders):
+
 <?php
-// A simple generator that yields numbers from 1 up to $max
-function getNumbers(int $max): Generator
-{
-    for ($i = 1; $i <= $max; $i++) {
-        // Yield the current number and pause execution
-        yield $i;
-    }
-}
+// Enable exceptions for PDO errors
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
 
-// Use the generator in a foreach loop
-foreach (getNumbers(5) as $number) {
-    // Output each yielded value followed by a newline
-    echo $number . PHP_EOL;
+// Create a new PDO instance (replace credentials as needed)
+$dsn = 'mysql:host=localhost;dbname=sample_db;charset=utf8mb4';
+$username = 'db_user';
+$password = 'db_pass';
+$pdo = new PDO($dsn, $username, $password, $options);
+
+// The SQL query with named placeholders
+$sql = "
+    SELECT id, name, email
+    FROM users
+    WHERE status = :status AND created_at > :date
+    ORDER BY created_at DESC
+    LIMIT :limit
+";
+
+// Prepare the statement once
+$stmt = $pdo->prepare($sql);
+
+// Bind values to the placeholders
+$status = 'active';
+$date   = '2023-01-01';
+$limit  = 10;
+
+// bindParam is used for the LIMIT because it expects an integer
+$stmt->bindParam(':status', $status, PDO::PARAM_STR);
+$stmt->bindParam(':date',   $date,   PDO::PARAM_STR);
+$stmt->bindParam(':limit',  $limit,  PDO::PARAM_INT);
+
+// Execute the prepared statement
+$stmt->execute();
+
+// Fetch all matching rows
+$users = $stmt->fetchAll();
+
+// Output the result (for demonstration)
+foreach ($users as $user) {
+    echo "ID: {$user['id']}, Name: {$user['name']}, Email: {$user['email']}\n";
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container & Automatic Dependency Resolution  
+Laravel Service Container & Dependency Injection
 
-Explanation:  
-The service container is Laravel’s powerful IoC tool that manages class dependencies and performs automatic injection. When a class type‑hint is detected in a controller or other class constructor, the container resolves it, creating an instance with its own dependencies. This enables clean, testable code by decoupling implementations from their usage. Bindings can be defined in service providers to map interfaces to concrete classes. The container also supports contextual bindings, singleton instances, and deferred providers for optimal performance.  
+The Service Container is Laravel’s powerful tool for managing class dependencies and performing dependency injection. It resolves objects automatically, allowing you to type‑hint dependencies in constructors or controller methods. By binding interfaces to concrete implementations, you can swap out classes without changing the consuming code. The container also supports contextual bindings, singleton bindings, and automatic injection of primitive values. Mastering the container leads to more testable, decoupled, and maintainable applications.
 
-Code example (with inline comments):  
+<?php
+// app/Providers/AppServiceProvider.php
+namespace App\Providers;
 
-<?php  
-namespace App\Http\Controllers;  
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\PaymentGateway;
+use App\Services\StripePaymentGateway;
+use App\Services\PaypalPaymentGateway;
 
-use App\Contracts\ReportGenerator;  
-use App\Services\ReportService;  
+class AppServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind the PaymentGateway contract to a concrete class.
+        // Here we use Stripe as the default implementation.
+        $this->app->bind(PaymentGateway::class, function ($app) {
+            return new StripePaymentGateway(config('services.stripe.secret'));
+        });
 
-class ReportController extends Controller  
-{  
-    protected $reportService;  
+        // Example of a contextual binding: use PayPal when the controller
+        // explicitly asks for it.
+        $this->app->when(\App\Http\Controllers\PayPalController::class)
+                  ->needs(PaymentGateway::class)
+                  ->give(function ($app) {
+                      return new PaypalPaymentGateway(config('services.paypal.client_id'));
+                  });
+    }
 
-    // Laravel automatically injects ReportService via the container  
-    public function __construct(ReportService $reportService)  
-    {  
-        $this->reportService = $reportService;  
-    }  
+    public function boot()
+    {
+        //
+    }
+}
 
-    public function index()  
-    {  
-        // Use the injected service to generate a report  
-        $data = $this->reportService->generate();  
-        return view('reports.index', compact('data'));  
-    }  
-}  
+// app/Http/Controllers/OrderController.php
+namespace App\Http\Controllers;
 
-// In a service provider (e.g., App\Providers\AppServiceProvider)  
+use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
 
-public function register()  
-{  
-    // Bind the ReportGenerator interface to a concrete implementation  
-    $this->app->bind(  
-        \App\Contracts\ReportGenerator::class,  
-        \App\Services\PdfReportGenerator::class  
-    );  
+class OrderController extends Controller
+{
+    protected $gateway;
 
-    // Register ReportService as a singleton if you want a single instance  
-    $this->app->singleton(ReportService::class, function ($app) {  
-        // Resolve the ReportGenerator implementation automatically  
-        $generator = $app->make(\App\Contracts\ReportGenerator::class);  
-        return new ReportService($generator);  
-    });  
-}  
+    // The container injects the bound implementation automatically.
+    public function __construct(PaymentGateway $gateway)
+    {
+        $this->gateway = $gateway;
+    }
 
-// ReportService demonstrating constructor injection of the interface  
+    public function store(Request $request)
+    {
+        // Use the injected payment gateway to process a charge.
+        $amount = $request->input('amount');
+        $this->gateway->charge($amount, $request->user());
 
-namespace App\Services;  
+        return response()->json(['status' => 'payment processed']);
+    }
+}
 
-use App\Contracts\ReportGenerator;  
+// app/Contracts/PaymentGateway.php
+namespace App\Contracts;
 
-class ReportService  
-{  
-    protected $generator;  
+interface PaymentGateway
+{
+    public function charge(float $amount, $user);
+}
 
-    public function __construct(ReportGenerator $generator)  
-    {  
-        $this->generator = $generator; // Interface injected, implementation resolved by container  
-    }  
+// app/Services/StripePaymentGateway.php
+namespace App\Services;
 
-    public function generate()  
-    {  
-        // Delegates report creation to the concrete generator  
-        return $this->generator->create();  
-    }  
-}  
+use App\Contracts\PaymentGateway;
+use Stripe\StripeClient;
+
+class StripePaymentGateway implements PaymentGateway
+{
+    protected $stripe;
+
+    public function __construct(string $secretKey)
+    {
+        $this->stripe = new StripeClient($secretKey);
+    }
+
+    public function charge(float $amount, $user)
+    {
+        // Simplified charge example
+        $this->stripe->charges->create([
+            'amount' => $amount * 100, // amount in cents
+            'currency' => 'usd',
+            'customer' => $user->stripe_customer_id,
+            'description' => 'Order payment',
+        ]);
+    }
+}
+
+// app/Services/PaypalPaymentGateway.php
+namespace App\Services;
+
+use App\Contracts\PaymentGateway;
+
+class PaypalPaymentGateway implements PaymentGateway
+{
+    protected $clientId;
+
+    public function __construct(string $clientId)
+    {
+        $this->clientId = $clientId;
+    }
+
+    public function charge(float $amount, $user)
+    {
+        // Placeholder for PayPal charge logic
+        // ...
+    }
+}
 */
 
 /* MySQL
-Topic: Recursive Common Table Expressions (CTE) for Hierarchical Data
+Topic: MySQL Stored Procedures with Input and Output Parameters
 
 Explanation:  
-A Recursive CTE allows you to query hierarchical or tree‑structured data in a single statement.  
-It consists of an anchor member (the base level) and a recursive member that references the CTE itself.  
-The recursion continues until the result set no longer produces new rows, which is controlled by a termination condition.  
-Recursive CTEs are useful for traversing organization charts, category trees, or bill‑of‑materials structures.  
-MySQL 8.0+ supports this feature, enabling efficient depth‑first or breadth‑first traversal without procedural code.
+A stored procedure is a pre‑compiled set of SQL statements stored in the database that can be invoked repeatedly.  
+It can accept input parameters, modify data, and return results through output parameters or result sets.  
+Using parameters makes the procedure reusable and helps avoid SQL injection by separating code from data.  
+Procedures improve performance because the execution plan is cached on the server.  
+They also encapsulate business logic, allowing changes without altering application code.
 
-Code example with comments:  
+Example code (with inline comments):
 
-WITH RECURSIVE employee_hierarchy AS (  
-    -- Anchor member: start with the top‑level manager (e.g., CEO with id = 1)  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
-    FROM employees  
-    WHERE manager_id IS NULL AND employee_id = 1  
+CREATE DATABASE IF NOT EXISTS demo_db;
+USE demo_db;
 
-    UNION ALL  
+-- Create a sample table
+CREATE TABLE IF NOT EXISTS employees (
+    emp_id INT AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    salary DECIMAL(10,2)
+);
 
-    -- Recursive member: find direct reports of the current level  
-    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1 AS level  
-    FROM employees e  
-    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id  
-)  
-SELECT employee_id, manager_id, employee_name, level  
-FROM employee_hierarchy  
-ORDER BY level, employee_id;  
+-- Insert some test data
+INSERT INTO employees (first_name, last_name, salary) VALUES
+('John', 'Doe', 55000),
+('Jane', 'Smith', 72000),
+('Alice', 'Brown', 48000);
+
+-- Drop the procedure if it already exists
+DROP PROCEDURE IF EXISTS GetEmployeeInfo;
+
+-- Create a stored procedure that takes an employee ID as input
+-- and returns the employee's full name and salary as output parameters
+CREATE PROCEDURE GetEmployeeInfo (
+    IN p_emp_id INT,
+    OUT p_full_name VARCHAR(101),
+    OUT p_salary DECIMAL(10,2)
+)
+BEGIN
+    DECLARE v_first VARCHAR(50);
+    DECLARE v_last VARCHAR(50);
+
+    -- Retrieve first and last name and salary for the given ID
+    SELECT first_name, last_name, salary
+    INTO v_first, v_last, p_salary
+    FROM employees
+    WHERE emp_id = p_emp_id;
+
+    -- Concatenate first and last name into the output variable
+    SET p_full_name = CONCAT(v_first, ' ', v_last);
+END;
+
+-- Call the procedure for employee ID 2
+CALL GetEmployeeInfo(2, @name, @salary);
+
+-- Show the output values
+SELECT @name AS employee_name, @salary AS employee_salary;
 */
 
 /* JavaScript
-Topic: JavaScript Closures  
+Topic: JavaScript Closures
 
 Explanation:  
-A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context. This means the inner function can reference variables declared in the outer function after the outer function has finished running. Closures are created every time a function is defined, allowing for data encapsulation and private state. They are commonly used for factories, module patterns, and maintaining state in asynchronous callbacks. Understanding closures helps prevent common bugs related to variable scope and memory leaks.  
+A closure is a function that retains access to its lexical environment even after the outer function has finished executing.  
+It allows inner functions to "remember" variables from the scope in which they were created.  
+Closures are useful for data privacy, encapsulation, and creating function factories.  
+They enable patterns such as currying, partial application, and module-like structures.  
+Understanding closures helps avoid common pitfalls like unintended shared state in loops.
 
-Code example:  
-function createCounter(initialValue) {            // outer function with a private variable  
-    let count = initialValue;                    // this variable is captured by the inner function  
+Code example with comments:  
 
-    return function increment(step) {            // inner function forms a closure over 'count'  
-        count += step;                           // modifies the captured variable  
-        console.log('Current count:', count);   // can access and use 'count' each call  
-    };                                           // the returned function retains access to 'count'  
-}                                                // even after createCounter finishes  
-
-const counter = createCounter(10);               // counter now holds the inner function  
-counter(2); // Output: Current count: 12  
-counter(5); // Output: Current count: 17  
-
-// Even if we create another counter, its state is independent  
-const anotherCounter = createCounter(0);  
-anotherCounter(3); // Output: Current count: 3  
+function makeCounter() {                     // outer function creates a private variable
+    let count = 0;                           // this variable is local to makeCounter
+    return function() {                     // returned inner function forms a closure
+        count++;                             // it can access and modify 'count' each call
+        console.log(count);                 // output the current count
+    };
+}
+const counter = makeCounter();                // counter now holds the inner function
+counter(); // 1                               // first call increments count to 1
+counter(); // 2                               // second call increments count to 2
+counter(); // 3                               // subsequent calls continue the sequence  
 */
 
 /* AI
-Topic: Chain‑of‑Thought Prompting for Debugging Python Code  
+Topic: Few‑Shot Prompt Engineering for Large Language Models  
 
 Explanation:  
-Chain‑of‑Thought (CoT) prompting asks the model to reason step by step before giving a final answer, which improves accuracy on complex tasks such as debugging. By explicitly requesting the model to list hypotheses, examine error messages, and suggest fixes, the assistant produces more reliable and transparent suggestions. This technique works well with large language models accessed via the OpenAI API, and it can be wrapped in a small helper function for reuse in developer tools. The approach is language‑agnostic, but the example below shows how to apply it to Python code errors.  
+Few‑shot prompting supplies a language model with a handful of example input‑output pairs before the actual query. This technique helps the model infer the desired format, style, or reasoning pattern without fine‑tuning. By carefully selecting diverse yet concise examples, you can guide the model to produce more reliable and task‑specific responses. The approach works well for classification, transformation, and reasoning tasks across many domains. It is lightweight, requires only prompt construction, and can be dynamically adjusted at runtime.
 
-Code Example:  
-import os  
-import openai  
+Code Example (Python, using OpenAI’s ChatCompletion API):
+import os
+import openai
 
-# Set your OpenAI API key – replace with your own or use an environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Load your API key from an environment variable or secret manager
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def debug_python_code(error_message: str, code_snippet: str) -> str:  
-    """Ask the model to perform a chain‑of‑thought analysis of a Python error."""  
-    # Construct a prompt that forces step‑by‑step reasoning  
-    prompt = (  
-        "You are an expert Python programmer. A user ran the following code and got an error.\n\n"  
-        f"Code:\n{code_snippet}\n\n"  
-        f"Error:\n{error_message}\n\n"  
-        "Provide a chain‑of‑thought explanation:\n"  
-        "1. Identify the type of error and its likely cause.\n"  
-        "2. Examine the relevant lines of code.\n"  
-        "3. Suggest one or more concrete fixes.\n"  
-        "4. Give the corrected code snippet.\n\n"  
-        "Answer in plain text, following the numbered steps."  
-    )  
+# Define a few‑shot prompt with two examples for sentiment classification
+few_shot_prompt = [
+    {"role": "system", "content": "You are a helpful assistant that classifies the sentiment of short sentences as Positive, Negative, or Neutral."},
+    {"role": "user", "content": "I love the new design of the app!"},
+    {"role": "assistant", "content": "Positive"},
+    {"role": "user", "content": "The update caused many bugs and crashes."},
+    {"role": "assistant", "content": "Negative"},
+    # The actual user query follows
+    {"role": "user", "content": "The documentation is okay, but could be clearer."}
+]
 
-    # Call the OpenAI Chat Completion endpoint with a temperature that encourages deterministic answers  
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",  
-        messages=[{"role": "user", "content": prompt}],  
-        temperature=0.0,  
-        max_tokens=500,  
-    )  
+# Call the ChatCompletion endpoint
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",          # Choose a suitable model
+    messages=few_shot_prompt,
+    temperature=0.0               # Deterministic output for classification
+)
 
-    # Return the assistant's full message content  
-    return response.choices[0].message.content  
-
-# Example usage  
-sample_code = """\n\ndef factorial(n):\n    return n * factorial(n-1)\n\nprint(factorial(5))\n"""  
-sample_error = "RecursionError: maximum recursion depth exceeded in comparison"  
-
-result = debug_python_code(sample_error, sample_code)  
-print(result)  
+# Extract and print the model’s classification
+classification = response.choices[0].message.content.strip()
+print("Sentiment:", classification)   # Expected output: "Neutral"  
 */
 
