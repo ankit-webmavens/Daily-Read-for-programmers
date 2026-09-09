@@ -1,222 +1,212 @@
 <?php
-// 2026-09-08 06:29:36
+// 2026-09-09 06:36:33
 
 /* PHP
-PHP Topic: Generators (Yield)
+Topic: Using PDO (PHP Data Objects) for Secure Database Access  
 
-Explanation:
-Generators allow you to create iterators without building an entire array in memory.  
-By using the `yield` keyword, a function can pause its execution and return a value, then resume later from the same point.  
-This is especially useful for processing large data sets, streaming files, or handling database rows one at a time.  
-Generators reduce memory consumption and can improve performance in I/O‑bound tasks.  
-They behave like objects implementing the Traversable interface, so they work with foreach loops.
+Explanation:  
+PDO provides a uniform interface for accessing many different databases from PHP, making code portable across MySQL, PostgreSQL, SQLite, and more. It supports prepared statements, which separate SQL code from data and protect against SQL injection attacks. PDO also offers flexible error handling modes, allowing developers to throw exceptions for easier debugging. Connection parameters are supplied via a DSN (Data Source Name) string, and options can be set to control attributes like fetch mode and character encoding. By using named or positional placeholders, you can bind values safely and execute the same statement multiple times with different data.
 
-Code Example:
+Code example with comments:
 <?php
-// A generator that yields each line of a large text file
-function readLines(string $filename): Generator
-{
-    $handle = fopen($filename, 'r');
-    if ($handle === false) {
-        throw new RuntimeException("Cannot open file: $filename");
-    }
+// Define connection parameters
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
 
-    // Loop until end of file, yielding one line at a time
-    while (($line = fgets($handle)) !== false) {
-        // Trim the newline and yield the line to the caller
-        yield rtrim($line, "\r\n");
-    }
+// Set PDO attributes: throw exceptions on error and fetch associative arrays by default
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
 
-    fclose($handle);
+try {
+    // Create a new PDO instance (establishes the database connection)
+    $pdo = new PDO($dsn, $username, $password, $options);
+} catch (PDOException $e) {
+    // Handle connection errors gracefully
+    die('Connection failed: ' . $e->getMessage());
 }
 
-// Using the generator
-foreach (readLines('biglog.txt') as $lineNumber => $text) {
-    // $lineNumber is zero‑based index automatically provided by foreach
-    echo "Line " . ($lineNumber + 1) . ": $text\n";
+// Prepare a SELECT statement with a named placeholder to filter active users
+$stmt = $pdo->prepare('SELECT id, name FROM users WHERE status = :status');
 
-    // Optionally break early to demonstrate lazy evaluation
-    if ($lineNumber >= 9) {
-        break; // stop after processing first 10 lines
-    }
+// Execute the statement, binding the placeholder to the value 'active'
+$stmt->execute(['status' => 'active']);
+
+// Loop through the result set and output each user's ID and name
+while ($row = $stmt->fetch()) {
+    echo $row['id'] . ': ' . $row['name'] . PHP_EOL;
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues and Jobs
+Topic: Laravel Service Container and Dependency Injection  
 
 Explanation:  
-Laravel queues allow you to defer time‑consuming tasks, such as sending emails or processing files, to a background worker instead of handling them during a web request. This improves response times and user experience. Queues are configured via a driver (database, Redis, SQS, etc.) and jobs are simple PHP classes that implement the ShouldQueue contract. Dispatching a job places a serialized version of the class onto the selected queue, where a worker process later executes its handle method. Laravel also provides helpers for delaying execution, retrying failed jobs, and monitoring queue health through the built‑in dashboard.
+The Laravel service container is a powerful tool that manages class dependencies and performs automatic injection. It resolves objects automatically, allowing you to type‑hint classes in constructors or controller methods without manually instantiating them. By binding interfaces to concrete implementations, you can swap out functionality without changing the consuming code. This promotes loose coupling and makes testing easier through mocking. Understanding how to register and resolve services is essential for building maintainable Laravel applications.  
 
-Code example (a simple email sending job using the database queue):
+Code Example:  
 
-app/Jobs/SendWelcomeEmail.php
 <?php
-namespace App\Jobs;
-
-use App\Mail\WelcomeMail;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Mail;
-
-class SendWelcomeEmail implements ShouldQueue
+// Define an interface for a payment gateway
+namespace App\Contracts;
+interface PaymentGateway
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    public function charge(float $amount);
+}
 
-    protected $user;                 // The user instance to receive the email
-
-    // The number of times the job may be attempted.
-    public $tries = 3;
-
-    // Constructor receives the user model.
-    public function __construct($user)
+// Implement the interface with a Stripe gateway
+namespace App\Services;
+use App\Contracts\PaymentGateway;
+class StripeGateway implements PaymentGateway
+{
+    public function charge(float $amount)
     {
-        $this->user = $user;
-    }
-
-    // This method is called by the queue worker.
-    public function handle()
-    {
-        // Build and send the welcome email.
-        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
+        // Logic to charge via Stripe API
+        return "Charged $$amount with Stripe.";
     }
 }
 
-Dispatching the job (e.g., from a controller after registration):
-
-use App\Jobs\SendWelcomeEmail;
-
-public function register(Request $request)
+// Bind the interface to the concrete class in a service provider
+namespace App\Providers;
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\PaymentGateway;
+use App\Services\StripeGateway;
+class AppServiceProvider extends ServiceProvider
 {
-    // Validation and user creation logic...
-    $user = User::create($request->all());
-
-    // Dispatch the job to the default queue, delaying it by 2 minutes.
-    SendWelcomeEmail::dispatch($user)->delay(now()->addMinutes(2));
-
-    return response()->json(['message' => 'Registration successful, welcome email will be sent shortly.']);
+    public function register()
+    {
+        // When PaymentGateway is requested, resolve StripeGateway
+        $this->app->bind(PaymentGateway::class, StripeGateway::class);
+    }
 }
 
-Running the queue worker (in a terminal):
+// Use dependency injection in a controller
+namespace App\Http\Controllers;
+use App\Contracts\PaymentGateway;
+class OrderController extends Controller
+{
+    protected $paymentGateway;
 
-php artisan queue:work --tries=3 --timeout=60
+    // Laravel automatically injects the bound implementation
+    public function __construct(PaymentGateway $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
 
-This command starts a worker that listens to the default queue, processes jobs, respects the $tries property, and times out after 60 seconds if a job hangs. The worker should be supervised (e.g., via Supervisor or systemd) in production to keep it running continuously.
+    public function store()
+    {
+        $result = $this->paymentGateway->charge(99.99);
+        return response()->json(['message' => $result]);
+    }
+}
+?>
 */
 
 /* MySQL
-MySQL Topic: Triggers for Auditing Table Changes
+Topic: Stored Procedures and Parameters in MySQL
 
 Explanation:  
-A trigger is a database object that automatically executes predefined SQL statements when a specified data‑modification event occurs (INSERT, UPDATE, DELETE).  
-Auditing triggers capture before‑ and after‑state of rows, allowing you to record who changed what and when without modifying application code.  
-You can define triggers at the row level (FOR EACH ROW) so that the trigger fires once for every affected row, which is ideal for detailed change logs.  
-Triggers can write to an audit table, include the current user (SESSION_USER), and store timestamps, making it easy to trace data history.  
-Because triggers run within the same transaction as the triggering statement, the audit record is rolled back if the original operation fails, guaranteeing consistency.
+Stored procedures are pre‑compiled SQL routines stored on the server that can encapsulate complex logic, reduce network traffic, and improve security by limiting direct table access.  
+They accept input (IN), output (OUT), and input‑output (INOUT) parameters, allowing you to pass values into the routine and retrieve results without returning a full result set.  
+Procedures can contain multiple SQL statements, control‑flow constructs (IF, WHILE, CASE), and error handling with DECLARE ... HANDLER.  
+Using procedures helps enforce business rules centrally and makes application code simpler and more maintainable.  
+When a procedure finishes, any changes made inside it are committed or rolled back according to the session’s transaction mode.
 
-Code example (create an audit table and a trigger that logs every UPDATE on the `employees` table):
+Code example with comments:
 
-CREATE TABLE employees (
-    emp_id   INT PRIMARY KEY,
-    name     VARCHAR(100),
-    salary   DECIMAL(10,2)
-);
-
-CREATE TABLE employees_audit (
-    audit_id   BIGINT AUTO_INCREMENT PRIMARY KEY,
-    emp_id     INT NOT NULL,
-    old_name   VARCHAR(100),
-    new_name   VARCHAR(100),
-    old_salary DECIMAL(10,2),
-    new_salary DECIMAL(10,2),
-    changed_by VARCHAR(64) NOT NULL,
-    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-DELIMITER $$
-
-CREATE TRIGGER trg_employees_update
-AFTER UPDATE ON employees
-FOR EACH ROW
+CREATE PROCEDURE GetCustomerOrders
+    (IN p_customer_id INT, OUT p_order_count INT)
 BEGIN
-    -- Insert a row into the audit table capturing old and new values
-    INSERT INTO employees_audit (
-        emp_id,
-        old_name, new_name,
-        old_salary, new_salary,
-        changed_by
-    ) VALUES (
-        OLD.emp_id,
-        OLD.name, NEW.name,
-        OLD.salary, NEW.salary,
-        SESSION_USER
-    );
-END $$
+    -- Count the number of orders for the given customer
+    SELECT COUNT(*) INTO p_order_count
+    FROM orders
+    WHERE customer_id = p_customer_id;
 
-DELIMITER ;
+    -- If the customer has no orders, raise a custom warning
+    IF p_order_count = 0 THEN
+        SIGNAL SQLSTATE '01000' SET MESSAGE_TEXT = 'Customer has no orders';
+    END IF;
+END;
+
+-- Call the procedure and retrieve the output parameter
+SET @cnt = 0;
+CALL GetCustomerOrders(12345, @cnt);
+SELECT @cnt AS order_count;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: JavaScript Closures
 
-Explanation:  
-A closure is created when an inner function retains access to variables from its outer (enclosing) function even after that outer function has finished executing. This allows the inner function to remember the environment in which it was created, enabling data encapsulation and private state. Closures are fundamental for patterns like function factories, memoization, and module design. Because the retained variables are not garbage‑collected while the closure exists, they can lead to memory leaks if not managed carefully. Understanding closures helps you write more modular and expressive code.
+Explanation: A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This happens because the inner function forms a lexical environment that includes the outer function’s scope. Closures enable data encapsulation, allowing private state that cannot be accessed directly from the outside. They are commonly used for creating factory functions, partial application, and maintaining state in asynchronous callbacks. Understanding closures is essential for mastering scope and memory management in JavaScript.
 
-Code Example:
-function makeCounter(start) {                     // outer function receives an initial value
-    let count = start;                           // this variable is captured by the inner function
-    return function() {                         // the inner function forms a closure over 'count'
-        count += 1;                              // modify the captured variable
-        return count;                            // return the updated value
+Code example:
+// outerFunction creates a private counter variable
+function outerFunction() {
+    let counter = 0;                     // private variable, not accessible directly
+
+    // innerFunction forms a closure over counter
+    return function innerFunction() {
+        counter += 1;                     // modifies the closed-over variable
+        console.log('Current count:', counter);
     };
 }
 
-const counterA = makeCounter(0);                  // creates a new closure with its own 'count'
-console.log(counterA()); // 1
-console.log(counterA()); // 2
+// create an instance of the closure
+const increment = outerFunction();
 
-const counterB = makeCounter(10);                 // a separate closure, independent state
-console.log(counterB()); // 11
-console.log(counterA()); // 3   // counterA continues where it left off, proving isolation.
+increment();  // Output: Current count: 1
+increment();  // Output: Current count: 2
+increment();  // Output: Current count: 3
+
+// The counter variable remains hidden; only the inner function can modify it.
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
+Topic: Few‑Shot Prompt Engineering for Large Language Models
 
 Explanation:  
-Few‑shot prompting provides the model with several example interactions before the actual user query, guiding it toward the desired response style. By structuring these examples as a list of messages, you can demonstrate the pattern you want—such as a concise summary, a step‑by‑step solution, or a specific tone. The model uses the context of the examples to infer how to handle the new request, often producing more accurate and consistent outputs than a single instruction. This technique works well for tasks like code generation, data extraction, or instructional writing. Adjust the number and quality of examples to balance token usage with performance.
+Few‑shot prompting supplies the model with a small number of example input‑output pairs directly in the prompt, guiding it toward the desired behavior without fine‑tuning.  
+It works well for tasks where labeled data is scarce but the model already has broad knowledge, such as classification, translation, or code generation.  
+The key is to format examples consistently and to keep the overall prompt length within the model’s token limits.  
+By varying the number and quality of examples, you can trade off between precision and computational cost.  
+Few‑shot prompting is a practical bridge between zero‑shot usage and full model fine‑tuning.
 
-Code example (Python) with comments:  
-import os  
-import json  
-from openai import OpenAI  
+Code example (Python, using OpenAI’s API):
 
-# Initialize the client using your API key from the environment variable  
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))  
+import os
+import openai
 
-# Define a few‑shot prompt: two example Q&A pairs followed by the new user question  
-messages = [  
-    {"role": "system", "content": "You are a helpful assistant that writes concise Python functions."},  
-    {"role": "user", "content": "Write a function that returns the factorial of a number."},  
-    {"role": "assistant", "content": "def factorial(n):\n    return 1 if n == 0 else n * factorial(n-1)"},  
-    {"role": "user", "content": "Write a function that checks if a string is a palindrome."},  
-    {"role": "assistant", "content": "def is_palindrome(s):\n    s = s.replace(' ', '').lower()\n    return s == s[::-1]"},  
-    {"role": "user", "content": "Write a function that merges two sorted lists into one sorted list."}  
-]  
+# Load your API key from an environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Call the chat completion endpoint with the constructed messages  
-response = client.chat.completions.create(  
-    model="gpt-4o-mini",  
-    messages=messages,  
-    temperature=0.2,  # low temperature for deterministic code output  
-)  
+# Define the task description and a few examples
+prompt = (
+    "Task: Classify the sentiment of a movie review as Positive, Negative, or Neutral.\n\n"
+    "Example 1:\n"
+    "Review: \"I loved the cinematography and the story was gripping.\"\n"
+    "Sentiment: Positive\n\n"
+    "Example 2:\n"
+    "Review: \"The plot was predictable and the acting was mediocre.\"\n"
+    "Sentiment: Negative\n\n"
+    "Now classify the following review:\n"
+    "Review: \"The movie had some good moments but overall felt flat.\"\n"
+    "Sentiment:"
+)
 
-# Extract and display the generated code  
-generated_code = response.choices[0].message.content  
-print("Generated function:\n", generated_code)  
+# Call the completion endpoint
+response = openai.Completion.create(
+    model="text-davinci-003",   # Choose a suitable GPT model
+    prompt=prompt,
+    max_tokens=10,              # Small number since we only need the label
+    temperature=0.0,            # Deterministic output for classification
+    stop=["\n"]                 # Stop at the end of the label
+)
+
+# Extract and print the model's answer
+sentiment = response.choices[0].text.strip()
+print("Predicted Sentiment:", sentiment)
 */
 
