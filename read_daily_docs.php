@@ -1,210 +1,204 @@
 <?php
-// 2026-09-10 06:36:39
+// 2026-09-11 06:35:34
 
 /* PHP
-PHP Generators – Memory‑Efficient Iteration  
-Generators allow a function to yield values one at a time instead of building an entire array in memory.  
-Each call to the generator returns the next value and pauses execution, resuming where it left off on the next iteration.  
-They are especially useful for processing large data sets, reading big files, or streaming database rows.  
-Using a generator can reduce memory consumption dramatically and improve performance for sequential data processing.  
-Syntax is similar to regular functions, but you use the “yield” keyword to produce values.
+Topic: PHP Generators
 
-<?php
-// Example: reading a large CSV file line by line with a generator
+Explanation:
+Generators allow you to create iterators without the overhead of building an entire array in memory.  
+They use the yield keyword to return values one at a time, pausing execution until the next value is requested.  
+This is especially useful for processing large data sets, reading files line‑by‑line, or streaming results from a database.  
+Each call to next() or a foreach loop resumes the function right after the last yield, preserving local variable state.  
+Generators improve performance and reduce memory consumption while keeping code readable and maintainable.  
 
-function readCsvRows(string $filePath): Generator
+Code example (PHP 7+):
+
+function readLargeFile(string $filePath): Generator
 {
     // Open the file for reading
     $handle = fopen($filePath, 'r');
     if ($handle === false) {
-        throw new RuntimeException("Unable to open file: $filePath");
+        throw new RuntimeException("Cannot open file: $filePath");
     }
 
-    // Loop until end‑of‑file
-    while (($data = fgetcsv($handle)) !== false) {
-        // Yield the current row as an associative array
-        // Assuming the first row contains column headers
-        static $headers = null;
-        if ($headers === null) {
-            $headers = $data;               // store header row
-            continue;                       // skip to next iteration
+    try {
+        // Read each line and yield it to the caller
+        while (($line = fgets($handle)) !== false) {
+            // Trim the line and yield it
+            yield trim($line);
         }
-        $row = array_combine($headers, $data);
-        yield $row;                         // return one row, pause here
+    } finally {
+        // Ensure the file handle is always closed
+        fclose($handle);
     }
-
-    fclose($handle); // clean up when generator is exhausted
 }
 
-// Consuming the generator
-foreach (readCsvRows('large_data.csv') as $row) {
-    // Process each row without loading the entire file into memory
-    echo $row['id'] . ': ' . $row['name'] . PHP_EOL;
+// Usage example
+foreach (readLargeFile('bigdata.txt') as $row) {
+    // Process each line without loading the whole file into memory
+    echo $row . PHP_EOL;
+}
+*/
+
+/* Laravel
+Topic: Laravel Service Container & Automatic Dependency Injection
+
+Explanation:
+The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. It resolves classes by reading their constructor type‑hints, instantiating required services, and injecting them where needed. By binding interfaces to concrete implementations, you can swap out implementations without changing the consuming code. This promotes loose coupling and makes testing easier, as you can replace real services with mocks. The container works behind the scenes for controllers, event listeners, jobs, and even route closures.
+
+Code Example (app/Providers/AppServiceProvider.php):
+<?php
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\PaymentGateway;
+use App\Services\StripePaymentGateway;
+
+class AppServiceProvider extends ServiceProvider
+{
+    // Register bindings in the container
+    public function register()
+    {
+        // Whenever the PaymentGateway interface is requested,
+        // resolve it to an instance of StripePaymentGateway.
+        $this->app->bind(PaymentGateway::class, function ($app) {
+            // You can pull configuration values from the config system.
+            $apiKey = config('services.stripe.secret');
+            return new StripePaymentGateway($apiKey);
+        });
+    }
+
+    public function boot()
+    {
+        // No boot logic needed for this example.
+    }
+}
+?>
+
+Code Example (app/Http/Controllers/OrderController.php):
+<?php
+namespace App\Http\Controllers;
+
+use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
+
+class OrderController extends Controller
+{
+    protected $paymentGateway;
+
+    // The container automatically injects the concrete implementation
+    // bound to PaymentGateway when the controller is instantiated.
+    public function __construct(PaymentGateway $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
+
+    public function store(Request $request)
+    {
+        $orderData = $request->all();
+
+        // Use the injected payment gateway to process payment.
+        $this->paymentGateway->charge($orderData['amount'], $orderData['currency']);
+
+        // Continue with order creation logic...
+        return response()->json(['status' => 'order placed']);
+    }
 }
 ?>
 */
 
-/* Laravel
-Laravel Topic: Queues with Redis Driver
-
-Explanation:  
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or calling external APIs. By configuring the queue driver to use Redis, you gain a fast, in‑memory data store that can handle high throughput and low latency. Jobs are pushed onto a Redis list and workers pull them off, processing each job in isolation. This approach keeps your HTTP responses quick and improves overall application scalability. Laravel provides artisan commands to start workers that listen continuously for new jobs.
-
-Code Example (Job Class and Dispatch)  
-
-<?php
-namespace App\Jobs;
-
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Mail;
-
-class SendWelcomeEmail implements ShouldQueue
-{
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    protected $userEmail;
-
-    // Constructor receives data needed for the job
-    public function __construct(string $email)
-    {
-        $this->userEmail = $email;
-    }
-
-    // This method is executed by the queue worker
-    public function handle()
-    {
-        // Send the email – this runs in the background
-        Mail::raw('Welcome to our platform!', function ($message) {
-            $message->to($this->userEmail)
-                    ->subject('Welcome!');
-        });
-    }
-}
-
-// Dispatching the job from a controller or service
-// The job will be pushed onto the Redis queue named "default"
-SendWelcomeEmail::dispatch('newuser@example.com')
-    ->onQueue('emails')
-    ->delay(now()->addMinutes(1)); // optional delay before processing
-
-// To start a worker that processes the "emails" queue:
-// php artisan queue:work redis --queue=emails --sleep=3 --tries=3
-
-// Ensure your .env has the following settings:
-// QUEUE_CONNECTION=redis
-// REDIS_HOST=127.0.0.1
-// REDIS_PASSWORD=null
-// REDIS_PORT=6379
-*/
-
 /* MySQL
-Topic: Common Table Expressions (CTE) in MySQL  
+Topic: Prepared Statements (Parameterized Queries) in MySQL  
 
 Explanation:  
-- A CTE is a temporary named result set that you can reference within a single SELECT, INSERT, UPDATE, or DELETE statement.  
-- It improves query readability by allowing you to break complex logic into logical building blocks.  
-- CTEs can be recursive, enabling hierarchical queries such as organization charts or bill‑of‑materials.  
-- They are defined using the WITH clause and exist only for the duration of the statement.  
-- MySQL 8.0+ supports both non‑recursive and recursive CTEs, making it a powerful tool for advanced data manipulation.  
+Prepared statements let you separate SQL code from data values, which improves security by preventing SQL injection. The server parses and optimizes the statement once, then you can execute it many times with different parameters, reducing overhead. Placeholders (question marks) mark where values will be supplied later. Values are sent to the server separately, so they are never interpreted as part of the SQL text. This technique is especially useful in applications that run the same query repeatedly with different input values.  
 
-Code example (finding employees in a hierarchy and calculating total salary per level):  
+Code example (MySQL client syntax with comments):  
 
-WITH RECURSIVE emp_hierarchy AS (  
-    SELECT employee_id, manager_id, salary, 1 AS level  
-    FROM employees  
-    WHERE manager_id IS NULL               -- top‑level manager (root)  
-    UNION ALL  
-    SELECT e.employee_id, e.manager_id, e.salary, eh.level + 1  
-    FROM employees e  
-    INNER JOIN emp_hierarchy eh ON e.manager_id = eh.employee_id  
-)  
-SELECT level, COUNT(*) AS employee_count, SUM(salary) AS total_salary  
-FROM emp_hierarchy  
-GROUP BY level  
-ORDER BY level;   -- result shows each hierarchy level with employee count and total salary  
+-- Define the SQL with a placeholder for the employee ID  
+PREPARE emp_stmt FROM 'SELECT first_name, last_name, salary FROM employees WHERE employee_id = ?';  
+
+-- Supply a value for the placeholder (e.g., employee_id = 7)  
+SET @emp_id = 7;  
+
+-- Execute the prepared statement using the supplied value  
+EXECUTE emp_stmt USING @emp_id;  
+
+-- Clean up by deallocating the prepared statement  
+DEALLOCATE PREPARE emp_stmt;  
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: Closures and Lexical Scoping in JavaScript
 
-Explanation:  
-A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing.  
-Closures enable data privacy by allowing inner functions to manipulate private state without exposing it to the global scope.  
-They are created automatically whenever a function is defined inside another function, and the inner function references variables from the outer scope.  
-Closures are fundamental for patterns such as module creation, function factories, and maintaining state in asynchronous callbacks.  
-Understanding closures helps avoid common pitfalls like unintentionally sharing mutable variables across multiple invocations.  
+Explanation:
+- A closure is a function that retains access to its lexical environment even after the outer function has finished executing.  
+- JavaScript creates a new scope for each function, and inner functions can reference variables defined in outer scopes.  
+- Closures enable data encapsulation, private state, and function factories.  
+- They are formed automatically whenever a function accesses variables from its parent scope.  
+- Understanding closures is essential for writing efficient asynchronous code and managing memory correctly.  
 
-Code Example:  
-function makeCounter() {  
-    let count = 0;                 // private variable, not accessible from outside  
-    return function() {            // this inner function forms a closure over 'count'  
-        count++;                   // modifies the private state  
-        return count;              // returns the updated count  
-    };  
-}  
+Code Example (with comments):
+function createCounter(initialValue) {               // Outer function that sets up the counter
+    let count = initialValue;                       // Private variable, not accessible from outside
+    return function increment(step = 1) {           // Inner function forms a closure over `count`
+        count += step;                              // Modifies the private `count` variable
+        console.log(`Current count: ${count}`);    // Shows the updated count
+        return count;                               // Returns the current value
+    };
+}
 
-const counterA = makeCounter();      // each call creates a separate closure  
-console.log(counterA()); // 1  
-console.log(counterA()); // 2  
+// Using the closure
+const counterA = createCounter(0);   // counterA has its own private `count`
+counterA();                          // Output: Current count: 1
+counterA(5);                         // Output: Current count: 6
 
-const counterB = makeCounter();      // independent counter with its own private 'count'  
-console.log(counterB()); // 1  
-console.log(counterA()); // 3   // counterA continues where it left off  
+const counterB = createCounter(10);  // counterB has a separate `count`
+counterB();                          // Output: Current count: 11
+counterB(2);                         // Output: Current count: 13
+
+// The two counters operate independently because each closure captures its own `count` variable.
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering for GPT‑4
+Topic: Prompt Engineering for Few‑Shot Learning with the OpenAI API  
 
-Explanation:
-This technique feeds the model a small number of example input‑output pairs (the “shots”) before the actual query, guiding it toward the desired response style and content. By carefully selecting diverse and representative examples, you can improve consistency, reduce hallucinations, and adapt the model to domain‑specific tasks without fine‑tuning. The prompt is built as a single string where each example is separated by clear delimiters, and the final user question follows the examples. This approach works well for classification, transformation, and generation tasks where labeled data is scarce. Adjust the number of shots and the phrasing of examples to balance performance and token cost.
+Explanation:  
+Few‑shot prompting supplies the model with a handful of example input‑output pairs, guiding it to perform a new task without fine‑tuning. By carefully selecting diverse examples and explicitly stating the desired format, you can improve consistency and reduce hallucinations. Use a clear instruction line, followed by a separator, then the examples, and finally the new query. Adjust temperature low (e.g., 0.2) to favor deterministic answers for structured outputs. This technique works well for data extraction, code generation, and classification tasks.
 
-Code example (Python, using OpenAI’s API):
-import os
+Code example (Python, using openai library):
+
 import openai
 
-# Load your OpenAI API key from an environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set your OpenAI API key
+openai.api_key = "YOUR_API_KEY"
 
-def build_few_shot_prompt(examples, user_question):
-    """
-    Assemble a prompt with a series of example Q&A pairs followed by the new question.
-    Each example is formatted as:
-    Q: <question>
-    A: <answer>
-    """
-    prompt = ""
-    for q, a in examples:
-        prompt += f"Q: {q}\nA: {a}\n\n"
-    # Append the actual user question without an answer
-    prompt += f"Q: {user_question}\nA:"
-    return prompt
+def classify_sentiment(text):
+    # Define the system instruction and few‑shot examples
+    prompt = (
+        "You are an assistant that classifies the sentiment of a sentence as Positive, Negative, or Neutral.\n"
+        "Examples:\n"
+        "Sentence: I love the new design! Sentiment: Positive\n"
+        "Sentence: The product arrived late and broken. Sentiment: Negative\n"
+        "Sentence: The meeting was okay, nothing special. Sentiment: Neutral\n"
+        "\n"
+        f"Sentence: {text} Sentiment:"
+    )
 
-# Define two illustrative examples (2‑shot)
-example_pairs = [
-    ("What is the capital of France?", "Paris."),
-    ("Translate 'good morning' to Spanish.", "Buenos días.")
-]
+    # Call the OpenAI chat completion endpoint
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,          # low temperature for consistent output
+        max_tokens=10,            # we only need a short label
+        n=1,
+        stop=None
+    )
+    # Extract the model's answer and strip whitespace
+    sentiment = response.choices[0].message.content.strip()
+    return sentiment
 
-# New user query we want the model to answer
-new_question = "Translate 'thank you' to Japanese."
-
-# Build the complete prompt
-few_shot_prompt = build_few_shot_prompt(example_pairs, new_question)
-
-# Call the GPT‑4 model with the constructed prompt
-response = openai.ChatCompletion.create(
-    model="gpt-4",
-    messages=[{"role": "user", "content": few_shot_prompt}],
-    temperature=0.2,          # Low temperature for deterministic answers
-    max_tokens=50
-)
-
-# Extract and print the model’s answer
-answer = response["choices"][0]["message"]["content"].strip()
-print("Answer:", answer)
+# Example usage
+print(classify_sentiment("The food was bland but the service was friendly."))   # Expected: Neutral or Positive depending on wording.
 */
 
