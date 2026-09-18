@@ -1,210 +1,235 @@
 <?php
-// 2026-09-17 06:36:45
+// 2026-09-18 06:32:16
 
 /* PHP
-Topic: PHP Generators  
+Topic: PHP PDO Prepared Statements  
 
 Explanation:  
-- Generators provide a simple way to implement iterators without the overhead of building a full class that implements the Iterator interface.  
-- They use the `yield` keyword to return values one at a time, preserving the function’s state between each call.  
-- This makes them memory‑efficient for large data sets because only one value is held in memory at a time.  
-- Generators can also receive input via `send()` and can return a final value with `return`.  
-- They are particularly useful for streaming data, lazy loading, or handling large files line by line.  
+Prepared statements in PDO separate the SQL query from its data values, which helps prevent SQL injection attacks.  
+You first prepare the SQL with placeholders, then bind the actual values before execution.  
+PDO supports both named (e.g., :name) and positional (?) placeholders.  
+Using prepared statements also allows the database to reuse the execution plan, improving performance for repeated queries.  
+Errors are handled via exceptions, making debugging easier and code more robust.  
 
-Code example (with comments):  
+Code example:  
+<?php  
+// Create a new PDO instance (replace DSN, username, and password with your own values)  
+$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass');  
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);  
 
-function getNumbers(int $max): Generator  
-{  
-    for ($i = 1; $i <= $max; $i++) {  
-        // Yield the current number and pause execution  
-        yield $i;  
-    }  
-    // Optional final return value (available via $generator->getReturn())  
-    return "Done generating $max numbers.";  
-}  
+// Define an INSERT statement with named placeholders  
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)";  
 
-$generator = getNumbers(5);  
+// Prepare the statement once  
+$stmt = $pdo->prepare($sql);  
 
-foreach ($generator as $value) {  
-    // Each iteration receives the next yielded value  
-    echo "Number: $value\n";  
-}  
+// Bind values to the placeholders and execute the statement  
+$stmt->execute([  
+    ':username'   => 'johndoe',                // User's username  
+    ':email'      => 'john@example.com',      // User's email address  
+    ':created_at' => date('Y-m-d H:i:s')      // Current timestamp  
+]);  
 
-// Access the return value after the generator is exhausted  
-echo $generator->getReturn();  
+// Fetch the ID of the newly inserted row  
+$newUserId = $pdo->lastInsertId();  
+echo "New user inserted with ID: " . $newUserId;  
+?>
 */
 
 /* Laravel
-Topic: Eloquent One‑to‑Many Relationships  
+Topic Name: Laravel Queues with Redis
 
 Explanation:  
-In Laravel, a one‑to‑many relationship is used when a single model owns multiple instances of another model, such as a Post having many Comments. The relationship is defined in the parent model with a hasMany() method and in the child model with a belongsTo() method. Eloquent automatically uses the foreign key convention (model_id) unless you specify a custom key. Once defined, you can retrieve related records using dynamic properties or query builder methods, and you can easily create, update, or delete related records through the relationship. This pattern keeps database interactions expressive and concise while maintaining referential integrity.
+Laravel queues provide a way to defer lengthy or resource‑intensive tasks such as sending emails, processing images, or running API calls. By pushing jobs onto a queue, the main request can return quickly while the work is processed in the background. Redis is a fast, in‑memory data store that Laravel can use as a queue driver, offering low latency and simple setup. Each queued job is serialized, stored in a Redis list, and a worker process pulls jobs off the list to execute them. Configuring queues with Redis improves application responsiveness and scalability, especially under heavy load.
 
-Code Example (Post and Comment models):
+Code Example (Job class and dispatch):
 
-// app/Models/Post.php
-namespace App\Models;
+<?php
+namespace App\Jobs;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 
-class Post extends Model
+class SendWelcomeEmail implements ShouldQueue
 {
-    // A post has many comments
-    public function comments()
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    protected $userId;   // The ID of the user to email
+
+    // Constructor receives data needed for the job
+    public function __construct($userId)
     {
-        return $this->hasMany(Comment::class); // default foreign key: post_id
+        $this->userId = $userId;
+    }
+
+    // The handle method contains the logic that will run in the background
+    public function handle()
+    {
+        $user = \App\Models\User::find($this->userId);
+        if ($user) {
+            // Use Laravel's Mail facade to send the email
+            \Mail::to($user->email)->send(new \App\Mail\WelcomeMail($user));
+        }
     }
 }
 
-// app/Models/Comment.php
-namespace App\Models;
+// Dispatching the job somewhere in a controller or service
+use App\Jobs\SendWelcomeEmail;
 
-use Illuminate\Database\Eloquent\Model;
+// After creating a new user, push the email job onto the Redis queue
+$user = \App\Models\User::create($request->all());
+SendWelcomeEmail::dispatch($user->id)->onQueue('emails');
 
-class Comment extends Model
-{
-    // A comment belongs to a post
-    public function post()
-    {
-        return $this->belongsTo(Post::class); // default foreign key: post_id
-    }
-}
-
-// Using the relationship in a controller or route closure
-// Retrieve a post with its comments
-$post = Post::with('comments')->find(1);
-
-// Access comments via dynamic property
-foreach ($post->comments as $comment) {
-    echo $comment->content . PHP_EOL;
-}
-
-// Adding a new comment to the post
-$post->comments()->create([
-    'content' => 'Great article!',
-    'user_id' => auth()->id(),
-]);
-
-// Deleting all comments belonging to a post
-$post->comments()->delete();
+// To start processing jobs, run the queue worker (run this in a terminal)
+// php artisan queue:work redis --queue=emails --sleep=3 --tries=3
+?>
 */
 
 /* MySQL
-Topic name: Common Table Expressions (CTEs) and Recursive Queries
+Topic: Recursive Common Table Expressions (CTEs) in MySQL
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and improve readability by allowing you to break complex queries into logical building blocks.  
-When the WITH clause is followed by the keyword RECURSIVE, the CTE can refer to itself, enabling hierarchical or graph traversal queries.  
-Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly references the CTE until no new rows are produced.  
-They are especially useful for processing tree structures such as organizational charts, category trees, or bill‑of‑materials data.
+Explanation:
+A recursive CTE allows you to perform hierarchical queries such as traversing parent‑child relationships or generating series of numbers. It consists of two parts: an anchor query that provides the initial rows, and a recursive query that references the CTE itself to produce subsequent rows. MySQL evaluates the recursive part repeatedly until it returns no new rows, or a MAX_RECURSION_DEPTH limit is reached. Recursive CTEs are useful for organizational charts, bill‑of‑materials, or date calendars. They were introduced in MySQL 8.0, replacing the need for stored procedures for many hierarchy tasks.
 
-Code example (generating an employee hierarchy):
+Code example (generate an employee hierarchy and list each employee with its level):
 
--- Anchor member: select the top‑level manager(s)
+-- Create a sample employees table
+CREATE TABLE employees (
+    emp_id   INT PRIMARY KEY,
+    name     VARCHAR(50),
+    manager_id INT NULL   -- NULL means top‑level manager
+);
+
+-- Insert sample data
+INSERT INTO employees (emp_id, name, manager_id) VALUES
+(1, 'Alice', NULL),   -- CEO
+(2, 'Bob',   1),
+(3, 'Carol', 1),
+(4, 'David', 2),
+(5, 'Eve',   2),
+(6, 'Frank', 3);
+
+-- Recursive CTE to walk the hierarchy
 WITH RECURSIVE emp_hierarchy AS (
+    -- Anchor: start with top‑level managers (no manager_id)
     SELECT 
-        employee_id,
+        emp_id,
+        name,
         manager_id,
-        first_name,
-        last_name,
-        1 AS level
+        1 AS level          -- root level
     FROM employees
-    WHERE manager_id IS NULL          -- top‑level managers have no manager
+    WHERE manager_id IS NULL
 
     UNION ALL
 
-    -- Recursive member: join each employee to their manager
+    -- Recursive step: join children to their parents
     SELECT 
-        e.employee_id,
+        e.emp_id,
+        e.name,
         e.manager_id,
-        e.first_name,
-        e.last_name,
-        eh.level + 1 AS level
+        h.level + 1 AS level
     FROM employees e
-    INNER JOIN emp_hierarchy eh
-        ON e.manager_id = eh.employee_id
+    JOIN emp_hierarchy h ON e.manager_id = h.emp_id
 )
 SELECT 
-    employee_id,
+    emp_id,
+    name,
     manager_id,
-    CONCAT(first_name, ' ', last_name) AS full_name,
     level
 FROM emp_hierarchy
-ORDER BY level, manager_id;   -- results show the hierarchy from top to bottom.
+ORDER BY level, manager_id, emp_id;
+
+-- The result shows each employee, their manager, and the depth (level) in the hierarchy.  
 */
 
 /* JavaScript
-Topic: JavaScript Closures  
+Topic Name: Async/Await for Managing Asynchronous Code  
 
 Explanation:  
-A closure is created when an inner function retains access to variables from its outer (enclosing) function even after that outer function has finished executing. This allows the inner function to “remember” the environment in which it was created, enabling data encapsulation and private state. Closures are fundamental for patterns such as function factories, module patterns, and maintaining state across asynchronous callbacks. Because the captured variables live on the heap, they persist as long as any reference to the inner function exists. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state between loop iterations.
+Async/Await is syntactic sugar built on top of JavaScript Promises, allowing asynchronous operations to be written in a synchronous style. Declaring a function with the async keyword makes it return a Promise automatically, and the await keyword pauses execution until the awaited Promise resolves or rejects. This improves readability by eliminating deeply nested .then() chains and makes error handling straightforward with try/catch blocks. It works in modern browsers and Node.js environments, but the underlying Promise behavior remains unchanged. Use async/await when you need to perform sequential asynchronous tasks or when you want clearer flow control in asynchronous code.
 
 Code Example:
-// Function that returns a new counter each time it is called
-function makeCounter() {
-    // ‘count’ is a private variable that lives in the closure
-    let count = 0;
-
-    // The returned function forms a closure over ‘count’
-    return function () {
-        // Increment and return the private count
-        count++;
-        return count;
-    };
+// Simulate a network request that resolves after a delay
+function fetchData(url) {
+    return new Promise((resolve, reject) => {
+        setTimeout(() => {
+            // For demonstration, resolve with a simple object
+            resolve({ data: `Response from ${url}` });
+        }, 1000);
+    });
 }
 
-// Create two independent counters
-const counterA = makeCounter();
-const counterB = makeCounter();
+// Async function that uses await to get the data
+async function loadData() {
+    try {
+        console.log('Fetching data...');
+        const result = await fetchData('https://api.example.com/items');
+        // Execution pauses above until the Promise resolves
+        console.log('Data received:', result.data);
+    } catch (error) {
+        // Any rejection from fetchData is caught here
+        console.error('Error fetching data:', error);
+    }
+}
 
-console.log(counterA()); // 1
-console.log(counterA()); // 2
-console.log(counterB()); // 1  (separate closure, its own ‘count’) 
-console.log(counterA()); // 3
-
-// Even after makeCounter() has finished, the inner function still accesses ‘count’ via its closure.
+// Invoke the async function
+loadData();   // Output appears after ~1 second delay.
 */
 
 /* AI
-Prompt Engineering for Few‑Shot Learning with OpenAI’s Chat Completion API  
-This technique supplies the model with a few example input‑output pairs (the “shots”) before the actual user query, guiding it toward the desired behavior. By carefully crafting the prompt structure—defining role, instructions, and examples—you can achieve higher accuracy without fine‑tuning. Few‑shot prompts are especially useful for tasks like text classification, data extraction, or style transfer where labeled data is scarce. The approach works across GPT‑3.5, GPT‑4 and newer models, and can be adapted programmatically to generate dynamic prompts. Properly formatted examples help the model infer patterns and apply them to new inputs.
+Topic: Prompt Engineering for Few‑Shot Classification with OpenAI’s Chat Completion API  
 
-Python example using the OpenAI API (requires `openai` package and an API key set in the environment)
+Explanation:  
+Few‑shot prompting lets a language model learn a new task from only a handful of labeled examples provided in the prompt. By carefully formatting the examples and instructions, you can guide the model to produce accurate classifications without any fine‑tuning. This approach is especially useful when you have limited data or need rapid prototyping. The prompt typically includes a clear task description, several example pairs (input → label), and then the new input whose label the model should infer. Adjusting delimiters, temperature, and max tokens can further improve consistency and reduce hallucinations.  
 
-import os
-import openai
+Code example (Python, using the openai library):  
 
-# Load API key from environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+import os  
+import openai  
 
-def classify_sentiment(text):
-    # Define a few‑shot prompt with role, instruction, and examples
-    prompt = [
-        {"role": "system", "content": "You are a helpful assistant that classifies sentiment of short sentences as Positive, Negative, or Neutral."},
-        {"role": "user", "content": "I love the new phone I bought!"},
-        {"role": "assistant", "content": "Positive"},
-        {"role": "user", "content": "The weather today is okay."},
-        {"role": "assistant", "content": "Neutral"},
-        {"role": "user", "content": "I'm disappointed with the service."},
-        {"role": "assistant", "content": "Negative"},
-        # The actual query to classify
-        {"role": "user", "content": text}
-    ]
+# Load your OpenAI API key from environment  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-    # Call the chat completion endpoint
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",          # choose an appropriate model
-        messages=prompt,
-        temperature=0.0               # deterministic output for classification
-    )
+def classify_text(text):  
+    # Build a few‑shot prompt with three examples  
+    prompt = """You are a helpful assistant that classifies customer messages into categories.  
+Categories: Complaint, Praise, Question.  
 
-    # Extract the assistant's reply
-    sentiment = response.choices[0].message.content.strip()
-    return sentiment
+Example 1:  
+Message: "I received the wrong item in my order."  
+Label: Complaint  
 
-# Example usage
-sample_text = "The movie was surprisingly good."
-print(f"Sentiment: {classify_sentiment(sample_text)}")   # Expected output: Positive  
+Example 2:  
+Message: "Your support team resolved my issue quickly, thank you!"  
+Label: Praise  
+
+Example 3:  
+Message: "When will the new product be released?"  
+Label: Question  
+
+Now classify the following message:  
+Message: """ + f'"{text}"' + """  
+Label:"""  
+
+    response = openai.ChatCompletion.create(  
+        model="gpt-4o-mini",  
+        messages=[{"role": "user", "content": prompt}],  
+        temperature=0.0,          # deterministic output  
+        max_tokens=10,            # only need the label  
+        top_p=1,  
+        n=1,  
+    )  
+
+    # The model returns the label as the first choice's message content  
+    label = response.choices[0].message.content.strip()  
+    return label  
+
+# Example usage  
+if __name__ == "__main__":  
+    new_message = "The website keeps crashing when I try to checkout."  
+    print("Predicted label:", classify_text(new_message))  
 */
 
