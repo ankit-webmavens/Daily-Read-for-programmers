@@ -1,49 +1,69 @@
 <?php
-// 2026-09-18 06:32:16
+// 2026-09-19 06:31:00
 
 /* PHP
-Topic: PHP PDO Prepared Statements  
+PHP Topic: PDO Prepared Statements  
 
 Explanation:  
-Prepared statements in PDO separate the SQL query from its data values, which helps prevent SQL injection attacks.  
-You first prepare the SQL with placeholders, then bind the actual values before execution.  
-PDO supports both named (e.g., :name) and positional (?) placeholders.  
-Using prepared statements also allows the database to reuse the execution plan, improving performance for repeated queries.  
-Errors are handled via exceptions, making debugging easier and code more robust.  
+- PDO (PHP Data Objects) provides a consistent interface for accessing many different databases.  
+- Prepared statements separate the SQL code from the data, which helps prevent SQL injection attacks.  
+- They allow the database server to parse and compile the query once, then execute it multiple times with different parameters, improving performance.  
+- Using named or positional placeholders makes the code more readable and maintainable.  
+- Errors can be handled gracefully with exceptions, giving you full control over error reporting.  
 
-Code example:  
-<?php  
-// Create a new PDO instance (replace DSN, username, and password with your own values)  
-$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass');  
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);  
+Code example (with comments):  
 
-// Define an INSERT statement with named placeholders  
-$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)";  
+<?php
+// Enable exceptions for PDO errors
+$options = [
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
 
-// Prepare the statement once  
-$stmt = $pdo->prepare($sql);  
+// Create a new PDO connection (replace DSN, user, and password with your own)
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'secret';
+$pdo = new PDO($dsn, $username, $password, $options);
 
-// Bind values to the placeholders and execute the statement  
-$stmt->execute([  
-    ':username'   => 'johndoe',                // User's username  
-    ':email'      => 'john@example.com',      // User's email address  
-    ':created_at' => date('Y-m-d H:i:s')      // Current timestamp  
-]);  
+// Prepare an INSERT statement with named placeholders
+$sql = "INSERT INTO users (username, email, created_at) 
+        VALUES (:username, :email, NOW())";
+$stmt = $pdo->prepare($sql);
 
-// Fetch the ID of the newly inserted row  
-$newUserId = $pdo->lastInsertId();  
-echo "New user inserted with ID: " . $newUserId;  
+// Bind values to the placeholders and execute
+$data = [
+    ':username' => 'alice',
+    ':email'    => 'alice@example.com',
+];
+$stmt->execute($data);
+
+// Prepare a SELECT statement with a positional placeholder
+$selectSql = "SELECT id, username, email FROM users WHERE username = ?";
+$selectStmt = $pdo->prepare($selectSql);
+
+// Execute the SELECT with the value for the placeholder
+$selectStmt->execute(['alice']);
+
+// Fetch and display the result
+$user = $selectStmt->fetch();
+if ($user) {
+    echo "User ID: " . $user['id'] . PHP_EOL;
+    echo "Username: " . $user['username'] . PHP_EOL;
+    echo "Email: " . $user['email'] . PHP_EOL;
+} else {
+    echo "No user found." . PHP_EOL;
+}
 ?>
 */
 
 /* Laravel
-Topic Name: Laravel Queues with Redis
+Topic: Laravel Queues with Redis
 
 Explanation:  
-Laravel queues provide a way to defer lengthy or resource‑intensive tasks such as sending emails, processing images, or running API calls. By pushing jobs onto a queue, the main request can return quickly while the work is processed in the background. Redis is a fast, in‑memory data store that Laravel can use as a queue driver, offering low latency and simple setup. Each queued job is serialized, stored in a Redis list, and a worker process pulls jobs off the list to execute them. Configuring queues with Redis improves application responsiveness and scalability, especially under heavy load.
+Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or calling external APIs. By using Redis as the queue driver you get fast, in‑memory storage that can handle high throughput. Jobs are defined as simple PHP classes that implement the ShouldQueue interface and contain a handle method. Dispatching a job places it onto the Redis list, where a worker process will pick it up and execute the handle method. This decouples the request cycle from heavy processing, improving response times and user experience.
 
-Code Example (Job class and dispatch):
-
+Code Example (Job Class and Dispatch):
 <?php
 namespace App\Jobs;
 
@@ -57,179 +77,144 @@ class SendWelcomeEmail implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $userId;   // The ID of the user to email
+    protected $user; // The user instance to email
 
-    // Constructor receives data needed for the job
-    public function __construct($userId)
+    // Constructor receives data that will be serialized onto the queue payload
+    public function __construct($user)
     {
-        $this->userId = $userId;
+        $this->user = $user;
     }
 
-    // The handle method contains the logic that will run in the background
+    // This method is called by the queue worker
     public function handle()
     {
-        $user = \App\Models\User::find($this->userId);
-        if ($user) {
-            // Use Laravel's Mail facade to send the email
-            \Mail::to($user->email)->send(new \App\Mail\WelcomeMail($user));
-        }
+        // Example: Use a mailable to send the email
+        \Mail::to($this->user->email)->send(new \App\Mail\WelcomeMail($this->user));
     }
 }
 
-// Dispatching the job somewhere in a controller or service
-use App\Jobs\SendWelcomeEmail;
+// Somewhere in a controller or service after a new user registers:
+public function register(Request $request)
+{
+    $user = User::create($request->only(['name', 'email', 'password']));
 
-// After creating a new user, push the email job onto the Redis queue
-$user = \App\Models\User::create($request->all());
-SendWelcomeEmail::dispatch($user->id)->onQueue('emails');
+    // Dispatch the job to the default queue (Redis by default in config/queue.php)
+    SendWelcomeEmail::dispatch($user);
 
-// To start processing jobs, run the queue worker (run this in a terminal)
-// php artisan queue:work redis --queue=emails --sleep=3 --tries=3
+    return response()->json(['message' => 'User registered, welcome email queued.']);
+}
+
+// Queue worker command (run from terminal):
+// php artisan queue:work redis --sleep=3 --tries=3
+
+// config/queue.php excerpt to ensure Redis driver is set:
+'default' => env('QUEUE_CONNECTION', 'redis'),
+
+'connections' => [
+    'redis' => [
+        'driver' => 'redis',
+        'connection' => 'default',
+        'queue' => env('REDIS_QUEUE', 'default'),
+        'retry_after' => 90,
+        'block_for' => null,
+    ],
+];
 ?>
 */
 
 /* MySQL
-Topic: Recursive Common Table Expressions (CTEs) in MySQL
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
-Explanation:
-A recursive CTE allows you to perform hierarchical queries such as traversing parent‑child relationships or generating series of numbers. It consists of two parts: an anchor query that provides the initial rows, and a recursive query that references the CTE itself to produce subsequent rows. MySQL evaluates the recursive part repeatedly until it returns no new rows, or a MAX_RECURSION_DEPTH limit is reached. Recursive CTEs are useful for organizational charts, bill‑of‑materials, or date calendars. They were introduced in MySQL 8.0, replacing the need for stored procedures for many hierarchy tasks.
+Explanation:  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs improve readability by allowing you to break complex queries into logical building blocks. They are defined using the WITH clause and exist only for the duration of the statement. Recursive CTEs enable hierarchical data processing, such as traversing parent‑child relationships. MySQL supports both non‑recursive and recursive CTEs starting with version 8.0.
 
-Code example (generate an employee hierarchy and list each employee with its level):
-
--- Create a sample employees table
-CREATE TABLE employees (
-    emp_id   INT PRIMARY KEY,
-    name     VARCHAR(50),
-    manager_id INT NULL   -- NULL means top‑level manager
-);
-
--- Insert sample data
-INSERT INTO employees (emp_id, name, manager_id) VALUES
-(1, 'Alice', NULL),   -- CEO
-(2, 'Bob',   1),
-(3, 'Carol', 1),
-(4, 'David', 2),
-(5, 'Eve',   2),
-(6, 'Frank', 3);
-
--- Recursive CTE to walk the hierarchy
-WITH RECURSIVE emp_hierarchy AS (
-    -- Anchor: start with top‑level managers (no manager_id)
-    SELECT 
-        emp_id,
-        name,
-        manager_id,
-        1 AS level          -- root level
-    FROM employees
-    WHERE manager_id IS NULL
-
-    UNION ALL
-
-    -- Recursive step: join children to their parents
-    SELECT 
-        e.emp_id,
-        e.name,
-        e.manager_id,
-        h.level + 1 AS level
-    FROM employees e
-    JOIN emp_hierarchy h ON e.manager_id = h.emp_id
-)
-SELECT 
-    emp_id,
-    name,
-    manager_id,
-    level
-FROM emp_hierarchy
-ORDER BY level, manager_id, emp_id;
-
--- The result shows each employee, their manager, and the depth (level) in the hierarchy.  
+Code example with comments:
+WITH RECURSIVE org_chart AS (  
+    -- Anchor member: select the top‑level manager (no parent)  
+    SELECT employee_id, name, manager_id, 1 AS level  
+    FROM employees  
+    WHERE manager_id IS NULL  
+  
+    UNION ALL  
+  
+    -- Recursive member: join each employee with their manager  
+    SELECT e.employee_id, e.name, e.manager_id, oc.level + 1  
+    FROM employees e  
+    INNER JOIN org_chart oc ON e.manager_id = oc.employee_id  
+)  
+SELECT employee_id, name, manager_id, level  
+FROM org_chart  
+ORDER BY level, manager_id;  
 */
 
 /* JavaScript
-Topic Name: Async/Await for Managing Asynchronous Code  
+Topic: Event Delegation in the DOM
 
 Explanation:  
-Async/Await is syntactic sugar built on top of JavaScript Promises, allowing asynchronous operations to be written in a synchronous style. Declaring a function with the async keyword makes it return a Promise automatically, and the await keyword pauses execution until the awaited Promise resolves or rejects. This improves readability by eliminating deeply nested .then() chains and makes error handling straightforward with try/catch blocks. It works in modern browsers and Node.js environments, but the underlying Promise behavior remains unchanged. Use async/await when you need to perform sequential asynchronous tasks or when you want clearer flow control in asynchronous code.
+Event delegation leverages the bubbling phase of events to handle actions on multiple child elements with a single parent listener.  
+It reduces memory usage because fewer event listeners are attached, which is especially beneficial for large or dynamic lists.  
+By checking the event.target, you can determine which specific child triggered the event and respond accordingly.  
+This pattern also simplifies adding or removing child elements without needing to reassign listeners.  
+Overall, event delegation leads to cleaner, more maintainable code for interactive interfaces.
 
 Code Example:
-// Simulate a network request that resolves after a delay
-function fetchData(url) {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            // For demonstration, resolve with a simple object
-            resolve({ data: `Response from ${url}` });
-        }, 1000);
-    });
-}
+// Parent container that holds many list items
+const listContainer = document.getElementById('item-list');
 
-// Async function that uses await to get the data
-async function loadData() {
-    try {
-        console.log('Fetching data...');
-        const result = await fetchData('https://api.example.com/items');
-        // Execution pauses above until the Promise resolves
-        console.log('Data received:', result.data);
-    } catch (error) {
-        // Any rejection from fetchData is caught here
-        console.error('Error fetching data:', error);
-    }
-}
+// Attach a single click listener to the parent
+listContainer.addEventListener('click', function(event) {
+  // Use event.target to identify the actual clicked element
+  const clickedItem = event.target;
+  
+  // Ensure the click originated from a list item (not the container itself)
+  if (clickedItem && clickedItem.matches('li.item')) {
+    // Perform the desired action, e.g., toggle a selected class
+    clickedItem.classList.toggle('selected');
+    console.log('Item clicked:', clickedItem.textContent);
+  }
+});
 
-// Invoke the async function
-loadData();   // Output appears after ~1 second delay.
+// Example HTML structure (for context):
+// <ul id="item-list">
+//   <li class="item">Item 1</li>
+//   <li class="item">Item 2</li>
+//   <li class="item">Item 3</li>
+// </ul)
 */
 
 /* AI
-Topic: Prompt Engineering for Few‑Shot Classification with OpenAI’s Chat Completion API  
+Topic: Prompt Engineering for Few‑Shot Learning with the OpenAI Chat Completion API  
 
 Explanation:  
-Few‑shot prompting lets a language model learn a new task from only a handful of labeled examples provided in the prompt. By carefully formatting the examples and instructions, you can guide the model to produce accurate classifications without any fine‑tuning. This approach is especially useful when you have limited data or need rapid prototyping. The prompt typically includes a clear task description, several example pairs (input → label), and then the new input whose label the model should infer. Adjusting delimiters, temperature, and max tokens can further improve consistency and reduce hallucinations.  
+Few‑shot prompting supplies the model with a handful of input–output examples inside the prompt, teaching it the desired pattern without any parameter updates. By carefully formatting the examples and using clear instruction text, the model can generalize to new inputs with high accuracy. This technique works especially well with Chat‑style models that understand system and user roles. You can dynamically construct the prompt in code, allowing you to adapt the examples based on the task. Proper token budgeting is crucial; keep the total length within the model’s context window to avoid truncation.
 
 Code example (Python, using the openai library):  
 
 import os  
 import openai  
 
-# Load your OpenAI API key from environment  
+# Load your API key from the environment  
 openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-def classify_text(text):  
-    # Build a few‑shot prompt with three examples  
-    prompt = """You are a helpful assistant that classifies customer messages into categories.  
-Categories: Complaint, Praise, Question.  
+# Define a few‑shot prompt: system message + two examples + new query  
+messages = [  
+    {"role": "system", "content": "You are a helpful assistant that converts English sentences into Pig Latin."},  
+    {"role": "user", "content": "Translate: I love programming."},  
+    {"role": "assistant", "content": "Iway ovelay ogrammingpray."},  
+    {"role": "user", "content": "Translate: The quick brown fox jumps over the lazy dog."},  
+    {"role": "assistant", "content": "Ethay uickqay rownbay oxfay umpsjay overway ethay azylay ogday."},  
+    {"role": "user", "content": "Translate: Machine learning is fascinating."}  
+]  
 
-Example 1:  
-Message: "I received the wrong item in my order."  
-Label: Complaint  
+# Call the Chat Completion endpoint  
+response = openai.ChatCompletion.create(  
+    model="gpt-4o-mini",            # choose a model that supports chat  
+    messages=messages,              # send the constructed prompt  
+    temperature=0.2,                # low temperature for deterministic output  
+)  
 
-Example 2:  
-Message: "Your support team resolved my issue quickly, thank you!"  
-Label: Praise  
-
-Example 3:  
-Message: "When will the new product be released?"  
-Label: Question  
-
-Now classify the following message:  
-Message: """ + f'"{text}"' + """  
-Label:"""  
-
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",  
-        messages=[{"role": "user", "content": prompt}],  
-        temperature=0.0,          # deterministic output  
-        max_tokens=10,            # only need the label  
-        top_p=1,  
-        n=1,  
-    )  
-
-    # The model returns the label as the first choice's message content  
-    label = response.choices[0].message.content.strip()  
-    return label  
-
-# Example usage  
-if __name__ == "__main__":  
-    new_message = "The website keeps crashing when I try to checkout."  
-    print("Predicted label:", classify_text(new_message))  
+# Extract and print the assistant's answer  
+answer = response["choices"][0]["message"]["content"]  
+print("Pig Latin:", answer)  
 */
 
