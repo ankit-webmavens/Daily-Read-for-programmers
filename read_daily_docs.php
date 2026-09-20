@@ -1,220 +1,273 @@
 <?php
-// 2026-09-19 06:31:00
+// 2026-09-20 06:52:43
 
 /* PHP
-PHP Topic: PDO Prepared Statements  
+Topic: PDO Prepared Statements for Secure Database Access  
 
 Explanation:  
-- PDO (PHP Data Objects) provides a consistent interface for accessing many different databases.  
-- Prepared statements separate the SQL code from the data, which helps prevent SQL injection attacks.  
-- They allow the database server to parse and compile the query once, then execute it multiple times with different parameters, improving performance.  
-- Using named or positional placeholders makes the code more readable and maintainable.  
-- Errors can be handled gracefully with exceptions, giving you full control over error reporting.  
+PDO (PHP Data Objects) provides a consistent interface for accessing different databases.  
+Prepared statements separate SQL code from data, preventing SQL injection attacks.  
+Placeholders in the query are bound to variables, allowing the database engine to optimize execution.  
+Error handling with exceptions makes debugging easier and keeps the code clean.  
+Using PDO you can switch between MySQL, PostgreSQL, SQLite, etc., without changing query logic.  
 
-Code example (with comments):  
+Code Example:  
+<?php  
+// Database connection parameters  
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8';  
+$username = 'dbuser';  
+$password = 'dbpass';  
 
-<?php
-// Enable exceptions for PDO errors
-$options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-];
+// PDO options for error mode and fetch style  
+$options = [  
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,  
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,  
+];  
 
-// Create a new PDO connection (replace DSN, user, and password with your own)
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'secret';
-$pdo = new PDO($dsn, $username, $password, $options);
+try {  
+    // Create PDO instance  
+    $pdo = new PDO($dsn, $username, $password, $options);  
+} catch (PDOException $e) {  
+    // Handle connection errors  
+    die('Connection failed: ' . $e->getMessage());  
+}  
 
-// Prepare an INSERT statement with named placeholders
-$sql = "INSERT INTO users (username, email, created_at) 
-        VALUES (:username, :email, NOW())";
-$stmt = $pdo->prepare($sql);
+// SQL query with named placeholders  
+$sql = 'SELECT id, name FROM users WHERE email = :email AND status = :status';  
 
-// Bind values to the placeholders and execute
-$data = [
-    ':username' => 'alice',
-    ':email'    => 'alice@example.com',
-];
-$stmt->execute($data);
+// Prepare the statement  
+$stmt = $pdo->prepare($sql);  
 
-// Prepare a SELECT statement with a positional placeholder
-$selectSql = "SELECT id, username, email FROM users WHERE username = ?";
-$selectStmt = $pdo->prepare($selectSql);
+// Values to bind to placeholders  
+$email = 'example@example.com';  
+$status = 'active';  
 
-// Execute the SELECT with the value for the placeholder
-$selectStmt->execute(['alice']);
+// Bind parameters securely  
+$stmt->bindParam(':email', $email, PDO::PARAM_STR);  
+$stmt->bindParam(':status', $status, PDO::PARAM_STR);  
 
-// Fetch and display the result
-$user = $selectStmt->fetch();
-if ($user) {
-    echo "User ID: " . $user['id'] . PHP_EOL;
-    echo "Username: " . $user['username'] . PHP_EOL;
-    echo "Email: " . $user['email'] . PHP_EOL;
-} else {
-    echo "No user found." . PHP_EOL;
-}
+// Execute the query  
+$stmt->execute();  
+
+// Fetch all matching rows  
+$users = $stmt->fetchAll();  
+
+// Output results  
+foreach ($users as $user) {  
+    echo $user['id'] . ' - ' . $user['name'] . PHP_EOL;  
+}  
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues with Redis
+Topic: Polymorphic Many‑to‑Many Relationships in Laravel Eloquent
 
-Explanation:  
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or calling external APIs. By using Redis as the queue driver you get fast, in‑memory storage that can handle high throughput. Jobs are defined as simple PHP classes that implement the ShouldQueue interface and contain a handle method. Dispatching a job places it onto the Redis list, where a worker process will pick it up and execute the handle method. This decouples the request cycle from heavy processing, improving response times and user experience.
+Explanation:
+A polymorphic many‑to‑many relationship lets a model belong to more than one other model on a single association. It is useful for features like tags, where posts, videos, and products can all share the same tags table. Laravel handles the intermediate table automatically, storing the related model’s type and ID. Defining the relationship requires a pivot table with morph columns (e.g., taggable_id and taggable_type). Once set up, you can attach, detach, and sync related models just like regular many‑to‑many relationships.
 
-Code Example (Job Class and Dispatch):
+Code example (Tag model, Post model, and migration):
+
 <?php
-namespace App\Jobs;
+namespace App\Models;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
+use Illuminate\Database\Eloquent\Model;
 
-class SendWelcomeEmail implements ShouldQueue
+class Tag extends Model
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    protected $user; // The user instance to email
-
-    // Constructor receives data that will be serialized onto the queue payload
-    public function __construct($user)
+    // Tags can belong to many different models
+    public function posts()
     {
-        $this->user = $user;
+        return $this->morphedByMany(Post::class, 'taggable');
     }
 
-    // This method is called by the queue worker
-    public function handle()
+    public function videos()
     {
-        // Example: Use a mailable to send the email
-        \Mail::to($this->user->email)->send(new \App\Mail\WelcomeMail($this->user));
+        return $this->morphedByMany(Video::class, 'taggable');
     }
 }
 
-// Somewhere in a controller or service after a new user registers:
-public function register(Request $request)
+class Post extends Model
 {
-    $user = User::create($request->only(['name', 'email', 'password']));
-
-    // Dispatch the job to the default queue (Redis by default in config/queue.php)
-    SendWelcomeEmail::dispatch($user);
-
-    return response()->json(['message' => 'User registered, welcome email queued.']);
+    // A post can have many tags
+    public function tags()
+    {
+        return $this->morphToMany(Tag::class, 'taggable');
+    }
 }
 
-// Queue worker command (run from terminal):
-// php artisan queue:work redis --sleep=3 --tries=3
+// Migration for the polymorphic pivot table
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 
-// config/queue.php excerpt to ensure Redis driver is set:
-'default' => env('QUEUE_CONNECTION', 'redis'),
+class CreateTaggablesTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('taggables', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('tag_id')->constrained()->onDelete('cascade'); // reference tags
+            $table->unsignedBigInteger('taggable_id');   // ID of the related model
+            $table->string('taggable_type');            // Class name of the related model
+            $table->timestamps();
 
-'connections' => [
-    'redis' => [
-        'driver' => 'redis',
-        'connection' => 'default',
-        'queue' => env('REDIS_QUEUE', 'default'),
-        'retry_after' => 90,
-        'block_for' => null,
-    ],
-];
+            $table->index(['taggable_id', 'taggable_type']); // improve query performance
+        });
+    }
+
+    public function down()
+    {
+        Schema::dropIfExists('taggables');
+    }
+}
+
+// Using the relationship in a controller or tinker
+$post = Post::find(1);
+$tag  = Tag::first();
+
+// Attach a tag to the post
+$post->tags()->attach($tag->id);
+
+// Retrieve all tags for the post
+$tags = $post->tags; // collection of Tag models
+
+// Sync tags (replace existing tags with new set)
+$post->tags()->sync([2, 3, 4]); // attach tags with IDs 2,3,4 and detach others
+
+// Detach a specific tag
+$post->tags()->detach($tag->id);
 ?>
 */
 
 /* MySQL
 Topic: Common Table Expressions (CTEs) and Recursive Queries
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs improve readability by allowing you to break complex queries into logical building blocks. They are defined using the WITH clause and exist only for the duration of the statement. Recursive CTEs enable hierarchical data processing, such as traversing parent‑child relationships. MySQL supports both non‑recursive and recursive CTEs starting with version 8.0.
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and improve readability by allowing you to break complex queries into logical building blocks.  
+Recursive CTEs enable hierarchical or graph‑like data traversal, such as retrieving all descendants of a node in a tree.  
+The recursion stops when the anchor query no longer produces rows that satisfy the recursive member.  
+MySQL supports both non‑recursive and recursive CTEs starting with version 8.0.
 
-Code example with comments:
-WITH RECURSIVE org_chart AS (  
-    -- Anchor member: select the top‑level manager (no parent)  
-    SELECT employee_id, name, manager_id, 1 AS level  
-    FROM employees  
-    WHERE manager_id IS NULL  
-  
-    UNION ALL  
-  
-    -- Recursive member: join each employee with their manager  
-    SELECT e.employee_id, e.name, e.manager_id, oc.level + 1  
-    FROM employees e  
-    INNER JOIN org_chart oc ON e.manager_id = oc.employee_id  
-)  
-SELECT employee_id, name, manager_id, level  
-FROM org_chart  
-ORDER BY level, manager_id;  
+Code Example:
+-- Create a simple hierarchical table
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    name   VARCHAR(50),
+    manager_id INT NULL   -- references emp_id of the manager
+);
+
+INSERT INTO employees (emp_id, name, manager_id) VALUES
+(1, 'Alice', NULL),      -- top‑level manager
+(2, 'Bob',   1),
+(3, 'Carol', 1),
+(4, 'Dave',  2),
+(5, 'Eve',   2),
+(6, 'Frank', 4);
+
+-- Recursive CTE to list all subordinates of a given manager (e.g., manager_id = 1)
+WITH RECURSIVE subordinates AS (
+    -- Anchor member: start with the direct reports of the chosen manager
+    SELECT emp_id, name, manager_id, 1 AS level
+    FROM employees
+    WHERE manager_id = 1
+
+    UNION ALL
+
+    -- Recursive member: find employees whose manager is already in the result set
+    SELECT e.emp_id, e.name, e.manager_id, s.level + 1
+    FROM employees e
+    INNER JOIN subordinates s ON e.manager_id = s.emp_id
+)
+SELECT emp_id, name, manager_id, level
+FROM subordinates
+ORDER BY level, emp_id;
+
+-- The query returns:
+-- emp_id | name  | manager_id | level
+--   2    | Bob   |      1     | 1
+--   3    | Carol |      1     | 1
+--   4    | Dave  |      2     | 2
+--   5    | Eve   |      2     | 2
+--   6    | Frank |      4     | 3   (indirect subordinate)
 */
 
 /* JavaScript
-Topic: Event Delegation in the DOM
+Topic: JavaScript Closures
 
-Explanation:  
-Event delegation leverages the bubbling phase of events to handle actions on multiple child elements with a single parent listener.  
-It reduces memory usage because fewer event listeners are attached, which is especially beneficial for large or dynamic lists.  
-By checking the event.target, you can determine which specific child triggered the event and respond accordingly.  
-This pattern also simplifies adding or removing child elements without needing to reassign listeners.  
-Overall, event delegation leads to cleaner, more maintainable code for interactive interfaces.
+Explanation:
+A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This happens because the inner function forms a lexical environment that includes the outer scope’s variables. Closures enable data privacy, function factories, and can be used to maintain state across multiple calls without exposing variables globally. They are created every time a function is defined inside another function. Understanding closures is essential for mastering asynchronous code, callbacks, and module patterns in JavaScript.
 
-Code Example:
-// Parent container that holds many list items
-const listContainer = document.getElementById('item-list');
+Code example with comments:
+function makeCounter(initialValue) {                 // outer function creates a counter
+    let count = initialValue;                       // private variable, not accessible outside
+    return function() {                            // inner function forms a closure
+        count += 1;                                 // can modify the outer variable
+        console.log('Current count:', count);      // uses the private state
+    };
+}
 
-// Attach a single click listener to the parent
-listContainer.addEventListener('click', function(event) {
-  // Use event.target to identify the actual clicked element
-  const clickedItem = event.target;
-  
-  // Ensure the click originated from a list item (not the container itself)
-  if (clickedItem && clickedItem.matches('li.item')) {
-    // Perform the desired action, e.g., toggle a selected class
-    clickedItem.classList.toggle('selected');
-    console.log('Item clicked:', clickedItem.textContent);
-  }
-});
+const counterA = makeCounter(0);   // each call gets its own independent closure
+counterA(); // Current count: 1
+counterA(); // Current count: 2
 
-// Example HTML structure (for context):
-// <ul id="item-list">
-//   <li class="item">Item 1</li>
-//   <li class="item">Item 2</li>
-//   <li class="item">Item 3</li>
-// </ul)
+const counterB = makeCounter(10);
+counterB(); // Current count: 11
+counterA(); // Current count: 3   // counterA maintains its own state, unaffected by counterB.
 */
 
 /* AI
-Topic: Prompt Engineering for Few‑Shot Learning with the OpenAI Chat Completion API  
+Topic: Prompt Engineering for Few‑Shot Learning with the OpenAI API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a handful of input–output examples inside the prompt, teaching it the desired pattern without any parameter updates. By carefully formatting the examples and using clear instruction text, the model can generalize to new inputs with high accuracy. This technique works especially well with Chat‑style models that understand system and user roles. You can dynamically construct the prompt in code, allowing you to adapt the examples based on the task. Proper token budgeting is crucial; keep the total length within the model’s context window to avoid truncation.
+1. Few‑shot prompting supplies the model with a small number of example input‑output pairs to teach it the desired pattern.  
+2. By carefully designing the examples and the instruction, you can steer the model to perform classification, transformation, or reasoning tasks without fine‑tuning.  
+3. The prompt should include a clear task description, a delimiter separating examples, and a final user query awaiting the model’s response.  
+4. Temperature close to zero makes the model’s output deterministic, which is useful for reproducible results in programmatic pipelines.  
+5. Using the OpenAI Python client you can construct the prompt dynamically, send it to the API, and parse the returned text for further processing.  
 
-Code example (Python, using the openai library):  
+Code example (Python, requires `openai` library and a valid API key):  
 
-import os  
-import openai  
+import os
+import openai
 
-# Load your API key from the environment  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Set your OpenAI API key, e.g., from an environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Define a few‑shot prompt: system message + two examples + new query  
-messages = [  
-    {"role": "system", "content": "You are a helpful assistant that converts English sentences into Pig Latin."},  
-    {"role": "user", "content": "Translate: I love programming."},  
-    {"role": "assistant", "content": "Iway ovelay ogrammingpray."},  
-    {"role": "user", "content": "Translate: The quick brown fox jumps over the lazy dog."},  
-    {"role": "assistant", "content": "Ethay uickqay rownbay oxfay umpsjay overway ethay azylay ogday."},  
-    {"role": "user", "content": "Translate: Machine learning is fascinating."}  
-]  
+def classify_sentiment(text):
+    """
+    Uses a few‑shot prompt to classify the sentiment of a single sentence.
+    Returns 'Positive', 'Negative', or 'Neutral'.
+    """
+    # Construct the prompt with two labeled examples and the new query
+    prompt = (
+        "Classify the sentiment of the following sentences as Positive, Negative, or Neutral.\n\n"
+        "Sentence: I love the new phone I bought!\n"
+        "Sentiment: Positive\n\n"
+        "Sentence: The traffic today was terrible.\n"
+        "Sentiment: Negative\n\n"
+        f"Sentence: {text}\n"
+        "Sentiment:"
+    )
 
-# Call the Chat Completion endpoint  
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",            # choose a model that supports chat  
-    messages=messages,              # send the constructed prompt  
-    temperature=0.2,                # low temperature for deterministic output  
-)  
+    # Call the OpenAI Completion endpoint (use gpt-3.5-turbo for chat-like behavior)
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,               # deterministic output
+        max_tokens=10,                 # we only need a short label
+        n=1,
+        stop=None
+    )
 
-# Extract and print the assistant's answer  
-answer = response["choices"][0]["message"]["content"]  
-print("Pig Latin:", answer)  
+    # Extract the generated sentiment label
+    sentiment = response.choices[0].message.content.strip()
+    return sentiment
+
+# Example usage
+if __name__ == "__main__":
+    test_sentence = "The movie was okay, not great but not bad either."
+    print(f"Input: {test_sentence}")
+    print("Predicted Sentiment:", classify_sentiment(test_sentence))
 */
 
