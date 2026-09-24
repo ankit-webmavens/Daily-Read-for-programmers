@@ -1,256 +1,253 @@
 <?php
-// 2026-09-23 06:35:25
+// 2026-09-24 06:41:12
 
 /* PHP
-Topic: PHP Traits
+Topic: Prepared Statements with PDO (PHP Data Objects)
 
 Explanation:
-PHP traits are a mechanism for code reuse in single inheritance languages such as PHP.  
-A trait groups methods that can be inserted into multiple classes, avoiding duplication.  
-Traits can contain concrete methods, abstract methods, and even properties.  
-When a class uses a trait, the trait's methods become part of that class's method set.  
-If a class and a trait define a method with the same name, the class's method takes precedence, or you can resolve conflicts with the `insteadof` and `as` operators.
+Prepared statements separate SQL code from data values, preventing SQL injection attacks. PDO provides a consistent interface for various databases, allowing you to prepare a query once and execute it multiple times with different parameters. When a statement is prepared, the database parses and compiles the SQL, then you bind values to placeholders before execution. This approach also improves performance for repeated queries and makes code easier to read and maintain. Using PDO’s error mode set to exceptions helps catch issues early in development.
 
-Code example with comments:
+Code example (with comments):
+
 <?php
-// Define a trait that provides logging functionality
-trait Logger {
-    // Simple method to log a message with a timestamp
-    public function log(string $message) {
-        $time = date('Y-m-d H:i:s');
-        echo "[{$time}] {$message}\n";
-    }
+// Create a new PDO connection (replace DSN, username, password with real values)
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$user = 'dbuser';
+$pass = 'dbpass';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,   // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
+$pdo = new PDO($dsn, $user, $pass, $options);
 
-    // Abstract method that concrete classes must implement
-    abstract protected function getLogPrefix(): string;
+// SQL with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
+
+// Prepare the statement once
+$stmt = $pdo->prepare($sql);
+
+// Data to insert
+$data = [
+    ['username' => 'alice', 'email' => 'alice@example.com'],
+    ['username' => 'bob',   'email' => 'bob@example.org'],
+    ['username' => 'carol', 'email' => 'carol@example.net'],
+];
+
+// Execute the prepared statement for each row
+foreach ($data as $row) {
+    // Bind values and execute; execute() can accept an array directly
+    $stmt->execute([
+        ':username' => $row['username'],
+        ':email'    => $row['email'],
+    ]);
+    // Optional: get the ID of the inserted row
+    $lastId = $pdo->lastInsertId();
+    echo "Inserted user {$row['username']} with ID $lastId\n";
 }
-
-// First class uses the Logger trait
-class FileProcessor {
-    use Logger;   // Include the Logger trait
-
-    // Implement the required abstract method
-    protected function getLogPrefix(): string {
-        return 'FileProcessor';
-    }
-
-    public function process(string $filename) {
-        $this->log($this->getLogPrefix() . " started processing {$filename}");
-        // ... processing logic ...
-        $this->log($this->getLogPrefix() . " finished processing {$filename}");
-    }
-}
-
-// Second class also uses the same Logger trait
-class ApiHandler {
-    use Logger;   // Include the Logger trait
-
-    protected function getLogPrefix(): string {
-        return 'ApiHandler';
-    }
-
-    public function handleRequest(array $request) {
-        $this->log($this->getLogPrefix() . " received request");
-        // ... handling logic ...
-        $this->log($this->getLogPrefix() . " completed request");
-    }
-}
-
-// Demo usage
-$fp = new FileProcessor();
-$fp->process('data.txt');
-
-$api = new ApiHandler();
-$api->handleRequest(['action' => 'save']);
-// The output will show timestamped log messages from both classes using the same trait.
+?>
 */
 
 /* Laravel
-Laravel Form Request Validation
+Topic: Laravel Service Container & Automatic Dependency Injection  
 
-This feature lets you encapsulate validation logic in a dedicated request class, keeping controllers clean and focused on business logic.  
-You create a custom request class that defines authorization rules and validation rules for incoming data.  
-When the request is type‑hinted in a controller method, Laravel automatically validates the payload before the method runs.  
-If validation fails, a JSON response with error details is returned for API routes, or a redirect with errors for web routes.  
-Using Form Requests also enables you to reuse validation rules across multiple controllers or actions.
+Explanation:  
+The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. It resolves class instances, injecting their required dependencies without manual instantiation. By binding abstractions to concrete implementations, you can swap implementations easily, facilitating testing and adherence to the SOLID principles. Controllers, jobs, listeners, and other classes can type‑hint dependencies in their constructors and Laravel will resolve them from the container. This mechanism simplifies code, improves readability, and centralises configuration of services.
 
-app/Http/Requests/StorePostRequest.php
+Code example:
+
+// app/Services/ReportGenerator.php
 <?php
-namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
+namespace App\Services;
 
-class StorePostRequest extends FormRequest
+class ReportGenerator
 {
-    // Determine if the user is authorized to make this request
-    public function authorize()
+    protected $format;
+
+    public function __construct(string $format = 'pdf')
     {
-        // return true to allow all users, or add your own logic
-        return true;
+        $this->format = $format;
     }
 
-    // Define the validation rules that apply to the request
-    public function rules()
+    public function generate(array $data)
     {
-        return [
-            'title'   => 'required|string|max:255',
-            'content' => 'required|string',
-            'tags'    => 'array',
-            'tags.*'  => 'integer|exists:tags,id',
-        ];
-    }
-
-    // Optional: customize the validation error messages
-    public function messages()
-    {
-        return [
-            'title.required' => 'A title is required for the post.',
-            'content.required' => 'Please provide the post content.',
-        ];
+        // generate a report in the specified format
+        return "Report generated in {$this->format} format.";
     }
 }
 
-app/Http/Controllers/PostController.php
+// app/Providers/AppServiceProvider.php
 <?php
+
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use App\Services\ReportGenerator;
+
+class AppServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind the ReportGenerator to the container with a custom format
+        $this->app->bind(ReportGenerator::class, function ($app) {
+            return new ReportGenerator('excel'); // change format as needed
+        });
+    }
+
+    public function boot()
+    {
+        //
+    }
+}
+
+// app/Http/Controllers/ReportController.php
+<?php
+
 namespace App\Http\Controllers;
 
-use App\Models\Post;
-use App\Http\Requests\StorePostRequest;
+use App\Services\ReportGenerator;
+use Illuminate\Http\Request;
 
-class PostController extends Controller
+class ReportController extends Controller
 {
-    // Store a new blog post using the validated data from StorePostRequest
-    public function store(StorePostRequest $request)
+    protected $reportGenerator;
+
+    // Laravel automatically injects the bound ReportGenerator instance
+    public function __construct(ReportGenerator $reportGenerator)
     {
-        // $request->validated() returns only the fields that passed validation
-        $data = $request->validated();
+        $this->reportGenerator = $reportGenerator;
+    }
 
-        // Create the post and attach any tags
-        $post = Post::create([
-            'title'   => $data['title'],
-            'content' => $data['content'],
-        ]);
+    public function show(Request $request)
+    {
+        $data = $request->all(); // pretend this is the data for the report
+        $result = $this->reportGenerator->generate($data);
 
-        if (!empty($data['tags'])) {
-            $post->tags()->attach($data['tags']);
-        }
-
-        // Return a JSON response for API routes
-        return response()->json([
-            'message' => 'Post created successfully.',
-            'post'    => $post,
-        ], 201);
+        return response($result);
     }
 }
 */
 
 /* MySQL
-Topic: Stored Procedures in MySQL  
+Topic: Common Table Expressions (CTEs) and Recursive Queries in MySQL
 
-Explanation:  
-Stored procedures are pre‑compiled groups of SQL statements that reside on the MySQL server.  
-They allow you to encapsulate business logic, reduce network round‑trips, and enforce consistency.  
-Parameters can be passed in, out, or both, enabling flexible data manipulation and validation.  
-Because the code is stored on the server, you can grant execution rights without exposing the underlying SQL.  
-Procedures also help in maintaining versioned logic and simplifying complex transaction handling.  
+Explanation:
+A Common Table Expression (CTE) is a temporary named result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and improves query readability, especially for complex subqueries. MySQL 8.0 introduced support for both non‑recursive and recursive CTEs. Recursive CTEs allow you to perform hierarchical or tree‑like traversals by repeatedly applying a query to its own output until a termination condition is met. This feature is useful for organizational charts, bill‑of‑materials, or any data that has parent‑child relationships.
 
-Code example (with comments):  
-CREATE PROCEDURE AddEmployee(  
-    IN p_name VARCHAR(100),          -- employee name supplied by caller  
-    IN p_department_id INT,         -- department reference supplied by caller  
-    OUT p_new_id INT)               -- will return the auto‑generated employee id  
-BEGIN  
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION   -- error handling block  
-    BEGIN  
-        ROLLBACK;                           -- undo any changes on error  
-        SET p_new_id = NULL;                -- indicate failure to caller  
-    END;  
-
-    START TRANSACTION;                      -- ensure atomic operation  
-
-    INSERT INTO employees (name, department_id)  
-    VALUES (p_name, p_department_id);       -- add new employee record  
-
-    SET p_new_id = LAST_INSERT_ID();        -- capture generated primary key  
-
-    COMMIT;                                 -- make changes permanent  
-END;  
-
--- Call the procedure and retrieve the new employee id  
-CALL AddEmployee('Jane Doe', 3, @emp_id);  
-SELECT @emp_id AS NewEmployeeID;   (returns the id of the newly inserted employee)
+Code Example (calculating a simple employee hierarchy):
+-- Define a recursive CTE named employee_path that starts with top‑level managers (manager_id IS NULL)
+WITH RECURSIVE employee_path AS (
+    SELECT 
+        employee_id,
+        employee_name,
+        manager_id,
+        CAST(employee_name AS CHAR(255)) AS path,
+        1 AS level
+    FROM employees
+    WHERE manager_id IS NULL
+    
+    UNION ALL
+    
+    SELECT 
+        e.employee_id,
+        e.employee_name,
+        e.manager_id,
+        CONCAT(ep.path, ' > ', e.employee_name) AS path,
+        ep.level + 1 AS level
+    FROM employees e
+    INNER JOIN employee_path ep ON e.manager_id = ep.employee_id
+)
+SELECT 
+    employee_id,
+    employee_name,
+    manager_id,
+    path,
+    level
+FROM employee_path
+ORDER BY level, employee_name;
 */
 
 /* JavaScript
-Topic: Event Delegation in the DOM
+Topic Name: Closures in JavaScript  
 
-Explanation:
-- Event delegation leverages the bubbling phase to handle events for many child elements using a single parent listener.  
-- It reduces memory usage and improves performance, especially with dynamically added elements.  
-- By checking the event target, you can determine which child triggered the event and act accordingly.  
-- This technique simplifies code maintenance and avoids attaching numerous identical listeners.  
-- It works for most events that bubble, such as click, input, and submit.  
+Explanation:  
+A closure is a function that retains access to its lexical scope even when it is executed outside the original context where it was defined.  
+It allows an inner function to remember variables from the outer function after the outer function has finished running.  
+Closures are created each time a function is defined, capturing the environment (variables, parameters) at that moment.  
+They are commonly used for data privacy, partial application, and implementing module‑like patterns.  
+Understanding closures helps avoid pitfalls such as unintended sharing of loop variables or memory leaks.  
 
-Code Example:
-// Parent container that holds many buttons
-const list = document.getElementById('buttonList');
+Code Example (with comments):  
 
-// Attach a single click listener to the parent
-list.addEventListener('click', function(event) {
-    // Check if the clicked element is a button
-    if (event.target && event.target.matches('button.item')) {
-        // Perform action for the specific button
-        console.log('Button clicked:', event.target.textContent);
-        // Example action: toggle a class
-        event.target.classList.toggle('active');
-    }
-});
+function createCounter(initialValue) {                     // outer function that receives a starting value  
+    let count = initialValue;                             // variable that will be captured by the closure  
 
-// Dynamically add a new button (demonstrates that delegation still works)
-const newBtn = document.createElement('button');
-newBtn.className = 'item';
-newBtn.textContent = 'New Button';
-list.appendChild(newBtn);
+    return function() {                                   // inner function forms a closure over 'count'  
+        count += 1;                                       // modify the captured variable  
+        return count;                                     // expose the updated value  
+    };                                                    // end of inner function  
+}                                                         // end of outer function  
+
+const counterA = createCounter(0);  // counterA has its own independent 'count' variable  
+const counterB = createCounter(10); // counterB has a separate 'count' variable  
+
+console.log(counterA()); // 1  
+console.log(counterA()); // 2  
+console.log(counterB()); // 11  
+console.log(counterB()); // 12   // each counter maintains its own private state via a closure.
 */
 
 /* AI
-Topic Name: Real‑time Sentiment Analysis using a DistilBERT model (Hugging Face Transformers)
+Topic: Prompt Engineering for Few‑Shot Classification with the OpenAI GPT‑4 API  
 
 Explanation:  
-1. DistilBERT is a lightweight, distilled version of BERT that retains 97% of its language understanding while being faster and smaller.  
-2. By loading a pre‑trained sentiment‑analysis checkpoint, you can classify text as positive, negative, or neutral without training from scratch.  
-3. The pipeline API abstracts tokenization, model inference, and post‑processing into a single callable object.  
-4. For real‑time applications, you can batch incoming sentences or process them one‑by‑one to keep latency low.  
-5. The example below shows how to set up the pipeline, handle a list of user inputs, and print the sentiment scores.
+Few‑shot prompting lets you teach a language model new tasks by providing a handful of labeled examples directly in the prompt. By carefully formatting the examples and instructions, the model can generalize to unseen inputs without any gradient updates. This approach is useful for rapid prototyping, handling niche categories, or when labeled data is scarce. The key is to keep the prompt concise, maintain consistent formatting, and include a clear task description. You can automate the construction of such prompts to feed them to the OpenAI API and parse the model’s structured response.
 
-Code example:
-import torch
-from transformers import pipeline
+Code example (Python, uses the openai package):
 
-# Initialize a sentiment‑analysis pipeline with a DistilBERT model
-sentiment_pipe = pipeline(
-    "sentiment-analysis",
-    model="distilbert-base-uncased-finetuned-sst-2-english",
-    device=0 if torch.cuda.is_available() else -1  # use GPU if available
-)
+import os
+import json
+import openai
 
-def analyze_texts(texts):
+# Load your OpenAI API key from an environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+def build_few_shot_prompt(examples, user_input):
     """
-    Takes a list of strings and returns sentiment labels with confidence scores.
+    Create a prompt that contains a short task description,
+    several input‑label pairs (the few‑shot examples),
+    and the new input for which we want a prediction.
     """
-    results = sentiment_pipe(texts)  # pipeline handles batching internally
-    for txt, res in zip(texts, results):
-        label = res["label"]
-        score = round(res["score"], 4)
-        print(f"Input: {txt}\n  Sentiment: {label} (confidence: {score})\n")
+    prompt = "You are a text classifier. Assign one of the following labels: Positive, Negative, Neutral.\n"
+    prompt += "Examples:\n"
+    for inp, label in examples:
+        prompt += f"Text: \"{inp}\" -> Label: {label}\n"
+    prompt += f"Text: \"{user_input}\" -> Label:"
+    return prompt
 
-# Example usage
-user_inputs = [
-    "I just love the new features in the app!",
-    "The update broke everything, I'm frustrated.",
-    "It's okay, nothing special but works fine."
+# Define a few labeled examples (input text, label)
+few_shot_examples = [
+    ("I love this product, it works great!", "Positive"),
+    ("The service was terrible and slow.", "Negative"),
+    ("It's okay, not the best but not the worst.", "Neutral")
 ]
 
-analyze_texts(user_inputs)
+# New text we want to classify
+new_text = "The movie was a complete waste of time."
+
+# Build the prompt
+prompt_text = build_few_shot_prompt(few_shot_examples, new_text)
+
+# Call the OpenAI chat completion endpoint with the constructed prompt
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": prompt_text}],
+    temperature=0.0,               # deterministic output
+    max_tokens=5                   # we only need the label word
+)
+
+# Extract and clean the label from the model’s reply
+predicted_label = response.choices[0].message.content.strip()
+print(f"Predicted label: {predicted_label}")   # Expected output: Negative (or Neutral depending on model)
 */
 
