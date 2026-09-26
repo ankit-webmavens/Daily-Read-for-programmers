@@ -1,283 +1,206 @@
 <?php
-// 2026-09-25 06:33:19
+// 2026-09-26 06:34:50
 
 /* PHP
-PHP Topic: Generators (Yield)
+Topic: Prepared Statements with PDO  
 
-Explanation:
-- Generators provide a simple way to implement iterators without the overhead of building a full iterator class.
-- They allow a function to return values one at a time, pausing execution after each yield and resuming on the next request.
-- This reduces memory consumption, especially when dealing with large data sets or streams.
-- Generators are created using the `yield` keyword inside a function.
-- They can also receive values sent back into the generator via `send()` and handle cleanup with `return` or `finally`.
+Explanation:  
+Prepared statements separate the SQL query structure from the actual data, which prevents SQL injection attacks by ensuring that user input is never directly concatenated into the query string. PDO (PHP Data Objects) provides a uniform interface for accessing multiple database types, and its prepared statement API works the same across MySQL, PostgreSQL, SQLite, and others. When a statement is prepared, the database parses and compiles the query once, allowing it to be executed repeatedly with different parameters efficiently. Binding values to placeholders can be done by name or by position, giving flexibility in how data is supplied to the query. After execution, the result set can be fetched using PDO’s fetch methods, which return data as associative arrays, objects, or numeric arrays.  
 
-Code Example (with comments):
+Code example:  
+<?php  
+// Create a new PDO instance (replace DSN, username, password as needed)  
+$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass');  
 
-<?php
-// A generator function that yields numbers from 1 up to $max
-function numberSequence(int $max): Generator
-{
-    for ($i = 1; $i <= $max; $i++) {
-        // Yield the current number and pause execution
-        yield $i;
-    }
-}
+// Enable exceptions for error handling  
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);  
 
-// Use the generator
-$maxValue = 5;
-$gen = numberSequence($maxValue);
+// Prepare the SQL statement with named placeholders  
+$stmt = $pdo->prepare('SELECT id, name, email FROM users WHERE status = :status AND created_at > :date');  
 
-foreach ($gen as $number) {
-    // Each iteration receives the next yielded value
-    echo "Number: $number\n";
-}
+// Bind values to the placeholders (type is optional, PDO will infer)  
+$stmt->bindValue(':status', 'active');  
+$stmt->bindValue(':date', '2023-01-01');  
 
-// Demonstrating sending a value back into the generator
-function keyValueGenerator(array $data): Generator
-{
-    foreach ($data as $key => $value) {
-        // Yield the value and wait for a possible new value to replace it
-        $newValue = yield $key => $value;
-        if ($newValue !== null) {
-            $data[$key] = $newValue; // Update the array with the new value
-        }
-    }
-    return $data; // Return the possibly modified array when finished
-}
+// Execute the prepared statement  
+$stmt->execute();  
 
-$sample = ['a' => 1, 'b' => 2, 'c' => 3];
-$kvGen = keyValueGenerator($sample);
+// Fetch all matching rows as an associative array  
+$users = $stmt->fetchAll(PDO::FETCH_ASSOC);  
 
-// Advance to the first yield and get the key/value
-$kvGen->rewind(); // optional, starts the generator
-list($key, $value) = $kvGen->current(); // $key = 'a', $value = 1
-echo "Key: $key, Value: $value\n";
-
-// Send a new value for the current key and move to the next
-$kvGen->send(10); // replaces value of 'a' with 10
-$kvGen->next();   // advance to 'b'
-
-// Continue iteration normally
-while ($kvGen->valid()) {
-    $k = $kvGen->key();
-    $v = $kvGen->current();
-    echo "Key: $k, Value: $v\n";
-    $kvGen->next();
-}
-
-// Retrieve the final array after generator completes
-$finalArray = $kvGen->getReturn();
-print_r($finalArray);
+// Iterate and display results  
+foreach ($users as $user) {  
+    echo "ID: {$user['id']}, Name: {$user['name']}, Email: {$user['email']}\n";  
+}  
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Dependency Injection  
+Topic: Route Model Binding in Laravel
 
-Explanation:  
-The service container is the heart of Laravel’s inversion of control (IoC) system. It manages class dependencies and performs automatic resolution, allowing you to type‑hint classes in constructors or controller methods without manually creating them. By binding abstractions to concrete implementations, you can swap out classes easily, which is useful for testing and for adhering to the SOLID principles. The container also supports contextual bindings, singleton bindings, and automatic injection of primitive values via the service provider. Understanding the container enables clean, decoupled code and makes your application more maintainable.
+Explanation:
+Route model binding lets Laravel automatically inject model instances into your routes or controller methods based on the route parameters. When a parameter name matches a model's primary key, Laravel queries the database and returns the corresponding model object. If the model is not found, a 404 response is generated automatically. This feature reduces boilerplate code and improves readability of controllers. You can use implicit binding for standard primary keys or define explicit bindings for custom logic.
 
-Code example (app/Providers/AppServiceProvider.php):  
+Code example (app/Models/Post.php):
+<?php
+namespace App\Models;
 
-<?php  
+use Illuminate\Database\Eloquent\Model;
 
-namespace App\Providers;  
+class Post extends Model
+{
+    // The table associated with the model.
+    protected $table = 'posts';
 
-use Illuminate\Support\ServiceProvider;  
-use App\Contracts\PaymentGateway;  
-use App\Services\StripePaymentGateway;  
+    // Mass assignable attributes.
+    protected $fillable = ['title', 'content'];
+}
+?>
 
-class AppServiceProvider extends ServiceProvider  
-{  
-    /**  
-     * Register services.  
-     */  
-    public function register()  
-    {  
-        // Bind the PaymentGateway contract to a concrete Stripe implementation  
-        $this->app->bind(PaymentGateway::class, function ($app) {  
-            // You could pull configuration values here if needed  
-            return new StripePaymentGateway(config('services.stripe.secret'));  
-        });  
+Code example (routes/web.php):
+<?php
+use App\Models\Post;
+use Illuminate\Support\Facades\Route;
 
-        // Example of a singleton binding – the same instance will be returned each time  
-        $this->app->singleton('logger', function ($app) {  
-            return new \Monolog\Logger('app');  
-        });  
-    }  
+// Implicit route model binding: {post} will be resolved to a Post model instance.
+Route::get('/posts/{post}', function (Post $post) {
+    // $post is already a fully hydrated Post model.
+    return view('posts.show', ['post' => $post]);
+});
+?>
 
-    /**  
-     * Bootstrap services.  
-     */  
-    public function boot()  
-    {  
-        // No boot logic needed for this example  
-    }  
-}  
+Code example (explicit binding in a service provider, e.g., App\Providers\RouteServiceProvider.php):
+<?php
+namespace App\Providers;
 
-// Using the container in a controller (app/Http/Controllers/OrderController.php)  
+use App\Models\User;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
 
-<?php  
+class RouteServiceProvider extends ServiceProvider
+{
+    public function boot()
+    {
+        // Define an explicit binding for a route parameter named "admin".
+        Route::bind('admin', function ($value) {
+            // Custom query logic: only retrieve users with an admin role.
+            return User::where('id', $value)->where('role', 'admin')->firstOrFail();
+        });
+    }
+}
+?>
 
-namespace App\Http\Controllers;  
+Code example (using the explicit binding in a route, routes/web.php):
+<?php
+use App\Models\User;
+use Illuminate\Support\Facades\Route;
 
-use App\Contracts\PaymentGateway;  
-use Illuminate\Http\Request;  
-
-class OrderController extends Controller  
-{  
-    protected $paymentGateway;  
-
-    // Laravel automatically injects the bound implementation  
-    public function __construct(PaymentGateway $paymentGateway)  
-    {  
-        $this->paymentGateway = $paymentGateway;  
-    }  
-
-    public function store(Request $request)  
-    {  
-        // Use the injected payment gateway to process a payment  
-        $this->paymentGateway->charge($request->input('amount'), $request->input('token'));  
-
-        return response()->json(['status' => 'payment processed']);  
-    }  
-}  
-
-// The contract (app/Contracts/PaymentGateway.php)  
-
-<?php  
-
-namespace App\Contracts;  
-
-interface PaymentGateway  
-{  
-    public function charge(float $amount, string $token);  
-}  
-
-// Concrete implementation (app/Services/StripePaymentGateway.php)  
-
-<?php  
-
-namespace App\Services;  
-
-use App\Contracts\PaymentGateway;  
-use Stripe\StripeClient;  
-
-class StripePaymentGateway implements PaymentGateway  
-{  
-    protected $stripe;  
-
-    public function __construct(string $secretKey)  
-    {  
-        $this->stripe = new StripeClient($secretKey);  
-    }  
-
-    public function charge(float $amount, string $token)  
-    {  
-        // Call Stripe's API to create a charge  
-        $this->stripe->charges->create([  
-            'amount' => $amount * 100, // amount in cents  
-            'currency' => 'usd',  
-            'source' => $token,  
-            'description' => 'Order payment',  
-        ]);  
-    }  
-}  
+// The {admin} parameter will be resolved using the custom binding above.
+Route::get('/admin/dashboard/{admin}', function (User $admin) {
+    // $admin is guaranteed to be an admin user.
+    return view('admin.dashboard', ['admin' => $admin]);
+});
+?>
 */
 
 /* MySQL
-Topic: MySQL Common Table Expressions (CTEs) and Recursive Queries  
+MySQL Topic: Common Table Expressions (CTE)
 
-Explanation:  
-A CTE is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-It is defined using the WITH clause and improves readability by separating complex subqueries from the main query.  
-MySQL supports both non‑recursive and recursive CTEs; recursive CTEs are useful for traversing hierarchical data such as organization charts or tree structures.  
-The recursive part consists of an anchor query that provides the initial rows and a recursive query that references the CTE itself to generate subsequent rows.  
-Recursive CTEs must include a termination condition, otherwise they will cause an infinite loop and the server will stop execution after reaching the max recursion depth.  
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+It is defined using the WITH clause and can improve readability by breaking complex queries into logical building blocks.  
+CTEs support recursion, allowing you to traverse hierarchical data such as organization charts or category trees.  
+They exist only for the duration of the statement that defines them, so they do not persist in the database.  
+You can define multiple CTEs in a single WITH clause, separating each with a comma.
 
-Code example with comments:  
-WITH RECURSIVE emp_path (emp_id, emp_name, manager_id, level) AS (  
-    -- Anchor query: select top‑level employees (those without a manager)  
-    SELECT emp_id, emp_name, manager_id, 1  
-    FROM employees  
-    WHERE manager_id IS NULL  
+Code Example:
+WITH RECURSIVE employee_hierarchy AS (
+    -- Anchor member: select the top‑level manager
+    SELECT employee_id, manager_id, employee_name, 1 AS level
+    FROM employees
+    WHERE manager_id IS NULL
 
-    UNION ALL  
+    UNION ALL
 
-    -- Recursive query: find direct reports of employees already in the path  
-    SELECT e.emp_id, e.emp_name, e.manager_id, ep.level + 1  
-    FROM employees e  
-    JOIN emp_path ep ON e.manager_id = ep.emp_id  
-)  
-SELECT emp_id, emp_name, manager_id, level  
-FROM emp_path  
-ORDER BY level, manager_id;  
+    -- Recursive member: select subordinates of the current level
+    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1
+    FROM employees e
+    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id
+)
+SELECT employee_id,
+       manager_id,
+       employee_name,
+       level
+FROM employee_hierarchy
+ORDER BY level, manager_id;
 */
 
 /* JavaScript
-Topic: JavaScript Closures and Lexical Scoping
+Topic: Debouncing Functions in JavaScript
 
-Explanation:
-A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This works because JavaScript uses lexical scoping: a function’s scope is determined by its location in the source code, not by where it is called. Closures enable data encapsulation, allowing private variables that cannot be accessed directly from the outside. They are commonly used for creating function factories, memoization, and maintaining state in asynchronous callbacks. Understanding closures is essential for writing efficient, modular, and secure JavaScript code.
+Explanation: Debouncing limits how often a function can be invoked by postponing its execution until a certain amount of idle time has passed. It is useful for performance‑critical events such as window resizing, scrolling, or keypress handling where rapid firing can cause lag. The technique works by resetting a timer each time the event occurs, ensuring the original function runs only after the user stops triggering the event for the specified delay. Debouncing can be implemented as a reusable utility that returns a wrapped version of any callback. This helps keep UI responsive and reduces unnecessary computations.
 
-Code Example:
-// Outer function creates a private counter variable
-function createCounter(initialValue) {
-    let count = initialValue;                     // this variable is private to createCounter
-
-    // Inner function forms a closure over the 'count' variable
-    return function increment(step = 1) {
-        count += step;                           // can modify the private variable
-        console.log('Current count:', count);   // side effect: output current value
-        return count;                            // return the updated count
+Code example:
+// Utility that creates a debounced version of a given function
+function debounce(func, wait) {
+    let timeoutId;                       // holds the timer identifier
+    return function (...args) {          // returned wrapper receives any arguments
+        const later = () => {            // function to run after the wait period
+            timeoutId = null;
+            func.apply(this, args);      // preserve context and forward arguments
+        };
+        clearTimeout(timeoutId);         // cancel any previously scheduled call
+        timeoutId = setTimeout(later, wait); // schedule a new call after 'wait' ms
     };
 }
 
-// Use the factory to create independent counters
-const counterA = createCounter(0);
-const counterB = createCounter(10);
+// Example usage: log the window width after the user stops resizing for 300 ms
+const logWidth = () => console.log('Window width:', window.innerWidth);
+const debouncedLogWidth = debounce(logWidth, 300);
 
-counterA();        // Current count: 1
-counterA(5);       // Current count: 6
-counterB();        // Current count: 11
-counterB(2);       // Current count: 13
-
-// The 'count' variable of each counter is isolated and persists across calls because of the closure.
+window.addEventListener('resize', debouncedLogWidth);
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s ChatCompletion API  
+Few-Shot Prompt Engineering with OpenAI’s Chat Completion API  
+This technique embeds a small number of example interactions (the “few‑shots”) directly in the prompt to guide the model’s behavior. By showing the desired input‑output pattern, the model can generalize to new queries that follow the same format. It is especially useful when you need consistent style, structure, or domain‑specific knowledge without fine‑tuning. The prompt typically consists of a system message, several user‑assistant turn pairs as examples, and then the new user query. Adjust the number and quality of examples to balance performance and token cost.
 
-Explanation:  
-Few‑shot prompting supplies the model with a small number of example input‑output pairs inside the prompt, guiding it to produce the desired format for new queries. This technique is useful when you cannot fine‑tune a model but need consistent, structured responses. By carefully crafting the examples, you can control tone, level of detail, and even enforce JSON output for downstream processing. The approach works across many tasks such as data extraction, code generation, or summarization. It is lightweight, requires only API calls, and can be iteratively refined based on model feedback.  
+import os
+import json
+import openai
 
-Code example (Python, using the openai library):  
-import os  
-import openai  
+# Load your OpenAI API key from an environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Load your API key from an environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Define the system instruction that sets the overall behavior
+system_msg = {"role": "system", "content": "You are a helpful assistant that formats travel itineraries in JSON."}
 
-# Define a few‑shot prompt with two examples and a new user request  
-messages = [  
-    {"role": "system", "content": "You are an assistant that extracts book information and returns JSON."},  
-    {"role": "user", "content": "Title: The Great Gatsby\nAuthor: F. Scott Fitzgerald\nYear: 1925"},  
-    {"role": "assistant", "content": "{\"title\": \"The Great Gatsby\", \"author\": \"F. Scott Fitzgerald\", \"year\": 1925}"},  
-    {"role": "user", "content": "Title: 1984\nAuthor: George Orwell\nYear: 1949"},  
-    {"role": "assistant", "content": "{\"title\": \"1984\", \"author\": \"George Orwell\", \"year\": 1949}"},  
-    {"role": "user", "content": "Title: To Kill a Mockingbird\nAuthor: Harper Lee\nYear: 1960"}  
-]  
+# Few-shot examples: user asks for a trip, assistant returns structured JSON
+example1 = {"role": "user", "content": "Plan a 2‑day trip to Paris for a food lover."}
+response1 = {"role": "assistant", "content": json.dumps({
+    "destination": "Paris",
+    "duration_days": 2,
+    "highlights": ["Le Marais food tour", "Michelin‑starred dinner at L’Arpège"],
+    "daily_plan": [
+        {"day": 1, "activities": ["Breakfast at a local boulangerie", "Lunch at Marché des Enfants‑Rouges", "Evening wine tasting"]},
+        {"day": 2, "activities": ["Visit a pâtisserie", "Explore the Latin Quarter", "Dinner at L’Arpège"]}
+    ]
+}, indent=2)}
 
-# Call the ChatCompletion endpoint  
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",  
-    messages=messages,  
-    temperature=0.0,          # deterministic output for structured data  
-    max_tokens=150            # enough for the JSON payload  
-)  
+# New user query we want the model to answer in the same format
+new_query = {"role": "user", "content": "Create a 3‑day itinerary for a nature photographer in Iceland."}
 
-# Extract and print the assistant's JSON response  
-assistant_message = response["choices"][0]["message"]["content"]  
-print(assistant_message)   # Expected output: {"title": "To Kill a Mockingbird", "author": "Harper Lee", "year": 1960}  
+# Assemble the messages list: system, few-shot pairs, then the new query
+messages = [system_msg, example1, response1, new_query]
+
+# Call the Chat Completion API
+completion = openai.ChatCompletion.create(
+    model="gpt-4o-mini",
+    messages=messages,
+    temperature=0.2  # low temperature for more deterministic JSON output
+)
+
+# Print the assistant’s formatted JSON response
+print(completion.choices[0].message.content)
 */
 
