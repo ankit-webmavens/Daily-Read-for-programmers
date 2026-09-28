@@ -1,216 +1,228 @@
 <?php
-// 2026-09-27 07:02:49
+// 2026-09-28 07:30:47
 
 /* PHP
-Topic: PDO Prepared Statements
+PHP Generators (Yield)
 
-Explanation:
-Prepared statements separate SQL code from data, protecting against SQL injection attacks. 
-They allow the database engine to parse and compile the query once, then execute it multiple times with different parameters. 
-Using PDO, you can bind values to placeholders, which are automatically escaped. 
-This approach improves performance for repeated queries and enhances code readability. 
-Prepared statements also make it easier to handle different data types safely.
+Generators allow functions to produce values lazily, one at a time, without building an entire array in memory.  
+They are created using the `yield` keyword, turning the function into an iterator object.  
+Each `yield` pauses the function, preserving its local state until the next value is requested.  
+Generators are ideal for processing large data sets, reading files line‑by‑line, or streaming results.  
+They reduce memory consumption and can improve performance in I/O‑bound tasks.  
+Use them with `foreach` or by manually advancing the iterator with `next()`.
 
-Code Example:
-// Connect to the database using PDO
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
-
-try {
-    $pdo = new PDO($dsn, $username, $password);
-    // Enable exceptions for error handling
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    die('Connection failed: ' . $e->getMessage());
+<?php
+// Define a generator that yields numbers from 1 to $n
+function rangeGenerator(int $n): Generator {
+    for ($i = 1; $i <= $n; $i++) {
+        // Yield the current number and pause execution
+        yield $i;
+    }
 }
 
-// Prepare an INSERT statement with named placeholders
-$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
-$stmt = $pdo->prepare($sql);
-
-// Bind values to the placeholders
-$stmt->bindValue(':username', $newUsername, PDO::PARAM_STR);
-$stmt->bindValue(':email', $newEmail, PDO::PARAM_STR);
-
-// Execute the prepared statement
-if ($stmt->execute()) {
-    echo "New user inserted with ID: " . $pdo->lastInsertId();
-} else {
-    echo "Error inserting user.";
+// Consume the generator
+foreach (rangeGenerator(5) as $value) {
+    // Each iteration receives the next yielded value
+    echo "Value: $value\n";
 }
 
-// Example variables (in a real scenario these would come from user input)
-$newUsername = 'johndoe';
-$newEmail = 'john@example.com';
+// Manual iteration example
+$gen = rangeGenerator(3);
+echo $gen->current() . "\n"; // Outputs 1
+$gen->next();                // Move to next value
+echo $gen->current() . "\n"; // Outputs 2
+?>
 */
 
 /* Laravel
-Laravel Route Model Binding  
+Topic: Laravel Eloquent Polymorphic Relationships  
 
-Route model binding automatically injects model instances into your routes based on the URL parameters, eliminating manual queries and simplifying controller code. When a parameter name matches a route key, Laravel resolves it to the corresponding Eloquent model. You can customize the binding key or use implicit binding for default primary keys. This feature enhances readability and reduces boiler‑plate, especially for CRUD operations. It also gracefully handles missing records by returning a 404 response automatically.  
+Explanation:  
+Polymorphic relationships allow a single model to belong to more than one other model on a single association. This is useful when you have different types of models that can share a common relationship, such as comments that can belong to posts, videos, or products. Laravel handles the underlying foreign key and type columns automatically, simplifying queries and data insertion. You define the relationship on the child model using morphTo, and on each parent model using morphMany or morphOne. The database schema requires an ID column and a type column to identify the owning model.
 
-// In routes/web.php  
-use App\Http\Controllers\PostController;  
+Code example (PHP):
 
-Route::get('posts/{post}', [PostController::class, 'show']);  
+<?php
+// Comment model – the polymorphic side
+class Comment extends Model
+{
+    // Define the inverse polymorphic relationship
+    public function commentable()
+    {
+        // morphTo will look for commentable_id and commentable_type columns
+        return $this->morphTo();
+    }
+}
 
-// In App/Models/Post.php (optional: customize binding key)  
-class Post extends Model  
-{  
-    // Use slug instead of id for binding  
-    public function getRouteKeyName()  
-    {  
-        return 'slug';  
-    }  
-}  
+// Post model – one possible parent
+class Post extends Model
+{
+    // A post can have many comments
+    public function comments()
+    {
+        // morphMany tells Laravel this model can have many related comments
+        return $this->morphMany(Comment::class, 'commentable');
+    }
+}
 
-// In App/Http/Controllers/PostController.php  
-class PostController extends Controller  
-{  
-    // Laravel injects the Post model instance based on {post} parameter  
-    public function show(Post $post)  
-    {  
-        // No need to query the database; $post is already loaded  
-        return view('posts.show', compact('post'));  
-    }  
-}  
+// Video model – another possible parent
+class Video extends Model
+{
+    // A video can have many comments as well
+    public function comments()
+    {
+        return $this->morphMany(Comment::class, 'commentable');
+    }
+}
+
+// Storing a comment for a post
+$post = Post::find(1);
+$post->comments()->create([
+    'body' => 'Great article!',
+    'user_id' => auth()->id(),
+]);
+
+// Storing a comment for a video
+$video = Video::find(5);
+$video->comments()->create([
+    'body' => 'Nice tutorial!',
+    'user_id' => auth()->id(),
+]);
+
+// Retrieving comments for a post
+$postComments = $post->comments; // Collection of Comment objects
+
+// Accessing the owning model from a comment
+$comment = Comment::find(10);
+$owner = $comment->commentable; // Returns either a Post or Video instance depending on the type
+?>
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures – Parameters and Flow Control
+Topic: MySQL Stored Procedures
 
-Explanation:  
-- A stored procedure is a pre‑compiled set of SQL statements that can be invoked repeatedly, improving performance and encapsulating business logic.  
-- Parameters allow you to pass input values, receive output values, or both, making the procedure flexible for different data sets.  
-- MySQL supports IN (default), OUT, and INOUT parameter modes, each controlling how data flows between the caller and the procedure.  
-- Inside the procedure you can use flow‑control constructs such as IF, CASE, WHILE, and LOOP to implement conditional logic and iteration.  
-- Proper use of DECLARE, SET, and SELECT INTO statements lets you manipulate local variables and return results without exposing raw tables.  
+Explanation:
+- A stored procedure is a named set of SQL statements that can be stored in the database and executed repeatedly.
+- It allows you to encapsulate complex logic, loops, and conditional processing on the server side.
+- Parameters can be defined as IN, OUT, or INOUT to pass values into and retrieve results from the procedure.
+- Using stored procedures can improve performance by reducing network round‑trips and centralizing business rules.
+- They also help with security, as you can grant execution rights without exposing underlying tables.
 
-Code example with comments:
-
-DELIMITER $$
-
-CREATE PROCEDURE GetEmployeeStats (
-    IN p_department_id INT,            -- input: department to filter
-    OUT p_total_salary DECIMAL(15,2), -- output: sum of salaries
-    INOUT p_employee_count INT        -- input/output: initial count, will be updated
-)
+Code example (with comments):
+CREATE PROCEDURE GetCustomerOrders(IN cust_id INT, OUT order_count INT)
 BEGIN
-    -- Local variable to hold intermediate sum
-    DECLARE v_sum DECIMAL(15,2) DEFAULT 0;
+    -- Count the number of orders for the given customer
+    SELECT COUNT(*) INTO order_count
+    FROM orders
+    WHERE customer_id = cust_id;
 
-    -- Calculate total salary for the given department
-    SELECT SUM(salary) INTO v_sum
-    FROM employees
-    WHERE department_id = p_department_id;
-
-    -- Assign the calculated sum to the OUT parameter
-    SET p_total_salary = v_sum;
-
-    -- Update the employee count: if caller passed 0, compute it; otherwise add to existing value
-    IF p_employee_count = 0 THEN
-        SELECT COUNT(*) INTO p_employee_count
-        FROM employees
-        WHERE department_id = p_department_id;
-    ELSE
-        SELECT COUNT(*) INTO @cnt
-        FROM employees
-        WHERE department_id = p_department_id;
-        SET p_employee_count = p_employee_count + @cnt;
-    END IF;
-END$$
-
-DELIMITER ;
-
--- Example call:
--- CALL GetEmployeeStats(3, @total, @cnt);
--- SELECT @total AS TotalSalary, @cnt AS EmployeeCount;
+    -- Optionally, you could return the list of orders as a result set
+    SELECT order_id, order_date, total_amount
+    FROM orders
+    WHERE customer_id = cust_id
+    ORDER BY order_date DESC;
+END;
+-- To call the procedure and retrieve the OUT parameter:
+CALL GetCustomerOrders(42, @totalOrders);
+SELECT @totalOrders AS TotalOrdersForCustomer42;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: Closures and the Module Pattern
 
-Explanation:  
-A closure is created when an inner function retains access to the variables of its outer (enclosing) function after that outer function has finished executing. This allows the inner function to remember and manipulate those variables across multiple calls. Closures are useful for data privacy, creating function factories, and maintaining state without using global variables. They form the basis of many advanced patterns like module patterns and currying. Understanding closures helps you write more predictable and modular code.  
+Explanation:
+Closures allow a function to retain access to its lexical scope even after the outer function has finished executing. By leveraging closures, developers can create private variables and encapsulate functionality, mimicking the behavior of classes or modules. The module pattern uses an immediately‑invoked function expression (IIFE) to expose a public API while keeping internal details hidden. This approach helps prevent global namespace pollution and protects internal state from unintended modification. Understanding closures is essential for writing maintainable, testable JavaScript code.
 
-Code example with comments:  
+Code example:
+// Define a module using an IIFE and closures
+var CounterModule = (function () {
+    // Private variable, not accessible from outside
+    var count = 0;
 
-function createCounter() {  
-    let count = 0;                     // variable in the outer scope  
+    // Private helper function
+    function log(message) {
+        console.log('[Counter] ' + message);
+    }
 
-    return function increment() {     // inner function forms a closure  
-        count++;                       // accesses and updates outer variable  
-        console.log('Current count:', count);  
-    };  
-}  
+    // Expose public methods
+    return {
+        // Increments the count and logs the new value
+        increment: function () {
+            count++;
+            log('incremented to ' + count);
+            return count;
+        },
+        // Decrements the count and logs the new value
+        decrement: function () {
+            count--;
+            log('decremented to ' + count);
+            return count;
+        },
+        // Returns the current count without allowing direct modification
+        getValue: function () {
+            return count;
+        }
+    };
+})(); // The IIFE executes immediately, creating the module
 
-const counter = createCounter();       // create a closure instance  
-counter(); // prints: Current count: 1  
-counter(); // prints: Current count: 2  
+// Using the module
+CounterModule.increment(); // logs: [Counter] incremented to 1
+CounterModule.increment(); // logs: [Counter] incremented to 2
+CounterModule.decrement(); // logs: [Counter] decremented to 1
+console.log('Current count:', CounterModule.getValue()); // prints: Current count: 1
 
-// Each call to createCounter() would produce an independent closure with its own count variable.  
+// Trying to access the private variable directly will fail
+console.log(CounterModule.count); // undefined, as count is hidden inside the closure.
 */
 
 /* AI
-Topic: Prompt Chaining with the OpenAI API for Structured Data Extraction  
+Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API
 
 Explanation:  
-Prompt chaining breaks a complex request into a series of simpler prompts, letting the model focus on one sub‑task at a time. First, you ask the model to identify the relevant sections of a document, then you request a clean JSON representation of the extracted information. This approach improves consistency, reduces hallucinations, and makes post‑processing easier. By re‑using the same model with different system messages, you can build a lightweight pipeline without writing custom parsers. The technique works with any GPT‑3.5‑Turbo or GPT‑4 model accessible via the OpenAI API.
+Few‑shot prompting supplies the model with a handful of example input‑output pairs inside the same request, guiding it toward the desired behavior without fine‑tuning. By carefully constructing the system message and a few user‑assistant exchanges, you can steer the model to follow custom formats, adhere to business rules, or emulate a specific writing style. This technique works well for tasks like data extraction, code generation, or domain‑specific Q&A where a full dataset is unavailable. The approach is inexpensive, flexible, and can be altered on the fly by modifying the example set. It also demonstrates how prompt design complements traditional model training in practical applications.
 
-Code example (Python, using openai library):
+Code example (Node.js, using the official openai npm package):
+```javascript
+// Load the OpenAI client library
+const { Configuration, OpenAIApi } = require("openai");
 
-import os
-import openai
+// Initialize with your API key (store securely, e.g., in environment variables)
+const configuration = new Configuration({
+    apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
 
-# Set your OpenAI API key in the environment or replace with a string
-openai.api_key = os.getenv("OPENAI_API_KEY")
+// Define a few‑shot prompt that teaches the model to translate
+// informal English sentences into formal business language
+const messages = [
+    { role: "system", content: "You are a professional writer who rewrites casual sentences into formal business language." },
+    // Example 1
+    { role: "user", content: "Hey, can you send me the report?" },
+    { role: "assistant", content: "Could you please forward the report to me at your earliest convenience?" },
+    // Example 2
+    { role: "user", content: "I need that data ASAP." },
+    { role: "assistant", content: "I would appreciate receiving the data as soon as possible." },
+    // New query
+    { role: "user", content: "Let’s meet tomorrow to discuss the project." }
+];
 
-def call_model(messages, model="gpt-4o-mini"):
-    """Send a list of messages to the OpenAI chat completion endpoint."""
-    response = openai.ChatCompletion.create(
-        model=model,
-        messages=messages,
-        temperature=0.0,          # deterministic output for extraction
-    )
-    return response.choices[0].message.content.strip()
+// Call the Chat Completion endpoint
+async function rewrite() {
+    try {
+        const response = await openai.createChatCompletion({
+            model: "gpt-4o-mini",
+            messages: messages,
+            temperature: 0.2   // low temperature for deterministic output
+        });
+        const rewritten = response.data.choices[0].message.content;
+        console.log("Rewritten sentence:", rewritten);
+    } catch (error) {
+        console.error("API request failed:", error);
+    }
+}
 
-def extract_sections(text):
-    """First chain step: ask the model to list sections that contain contact info."""
-    system = {"role": "system", "content": "You are an assistant that extracts structural cues from raw text."}
-    user = {"role": "user", "content": f"""Identify the paragraph(s) in the following text that contain a person's name, email, and phone number. Return only the exact paragraph(s) without any commentary.
-
-Text:
-\"\"\"{text}\"\"\""""}
-    return call_model([system, user])
-
-def format_to_json(section):
-    """Second chain step: convert the extracted paragraph into a JSON object."""
-    system = {"role": "system", "content": "You output only valid JSON, no extra text."}
-    user = {"role": "user", "content": f"""Extract the name, email, and phone number from the paragraph below and present them as a JSON object with keys: name, email, phone.
-
-Paragraph:
-\"\"\"{section}\"\"\""""}
-    return call_model([system, user])
-
-# Example raw document
-raw_text = """
-Dear Hiring Team,
-
-My name is Alex Rivera. You can reach me at alex.rivera@example.com or call me at (555) 123‑4567.
-I am excited to apply for the software engineer position.
-
-Thanks,
-Alex
-"""
-
-# Run the prompt chain
-section = extract_sections(raw_text)
-json_result = format_to_json(section)
-
-print("Extracted Section:")
-print(section)
-print("\nJSON Output:")
-print(json_result)
+// Execute the function
+rewrite();
+```
 */
 
