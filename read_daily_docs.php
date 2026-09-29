@@ -1,228 +1,251 @@
 <?php
-// 2026-09-28 07:30:47
+// 2026-09-29 07:26:51
 
 /* PHP
-PHP Generators (Yield)
+Topic: PHP PDO Prepared Statements
 
-Generators allow functions to produce values lazily, one at a time, without building an entire array in memory.  
-They are created using the `yield` keyword, turning the function into an iterator object.  
-Each `yield` pauses the function, preserving its local state until the next value is requested.  
-Generators are ideal for processing large data sets, reading files line‑by‑line, or streaming results.  
-They reduce memory consumption and can improve performance in I/O‑bound tasks.  
-Use them with `foreach` or by manually advancing the iterator with `next()`.
+Explanation:
+Prepared statements in PDO separate the SQL query from its parameters, improving security by preventing SQL injection. 
+They allow the database engine to parse and compile the statement once, then execute it multiple times with different values. 
+Binding parameters ensures correct data types are sent to the database. 
+Errors are easier to handle because the statement preparation is distinct from execution. 
+Using prepared statements also often yields better performance for repeated queries.
 
-<?php
-// Define a generator that yields numbers from 1 to $n
-function rangeGenerator(int $n): Generator {
-    for ($i = 1; $i <= $n; $i++) {
-        // Yield the current number and pause execution
-        yield $i;
-    }
+Code example:
+// Connect to the database using PDO
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
+
+try {
+    $pdo = new PDO($dsn, $username, $password);
+    // Set error mode to exceptions for better error handling
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die('Connection failed: ' . $e->getMessage());
 }
 
-// Consume the generator
-foreach (rangeGenerator(5) as $value) {
-    // Each iteration receives the next yielded value
-    echo "Value: $value\n";
-}
+// Prepare an INSERT statement with named placeholders
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
+$stmt = $pdo->prepare($sql);
 
-// Manual iteration example
-$gen = rangeGenerator(3);
-echo $gen->current() . "\n"; // Outputs 1
-$gen->next();                // Move to next value
-echo $gen->current() . "\n"; // Outputs 2
-?>
+// Bind values to the placeholders
+$stmt->bindValue(':username', 'alice', PDO::PARAM_STR);
+$stmt->bindValue(':email', 'alice@example.com', PDO::PARAM_STR);
+
+// Execute the statement
+if ($stmt->execute()) {
+    echo "New user inserted with ID: " . $pdo->lastInsertId();
+} else {
+    echo "Insert failed.";
+}
 */
 
 /* Laravel
-Topic: Laravel Eloquent Polymorphic Relationships  
+Topic: Laravel Service Container & Automatic Dependency Injection
 
-Explanation:  
-Polymorphic relationships allow a single model to belong to more than one other model on a single association. This is useful when you have different types of models that can share a common relationship, such as comments that can belong to posts, videos, or products. Laravel handles the underlying foreign key and type columns automatically, simplifying queries and data insertion. You define the relationship on the child model using morphTo, and on each parent model using morphMany or morphOne. The database schema requires an ID column and a type column to identify the owning model.
+Explanation:
+The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection automatically. It resolves objects by inspecting their constructors, allowing you to type‑hint interfaces or classes and have the container provide the appropriate implementation. This promotes loose coupling, easier testing, and cleaner controller code. You can bind concrete classes, interfaces, or even closures to the container, and specify singleton or transient lifetimes. When a class is resolved, the container injects all required dependencies recursively, simplifying complex object graphs.
 
-Code example (PHP):
+Code Example (app/Providers/AppServiceProvider.php):
 
-<?php
-// Comment model – the polymorphic side
-class Comment extends Model
+public function register()
 {
-    // Define the inverse polymorphic relationship
-    public function commentable()
+    // Bind an interface to a concrete implementation as a singleton
+    $this->app->singleton(
+        App\Contracts\PaymentGateway::class,
+        App\Services\StripePaymentGateway::class
+    );
+}
+
+// app/Http/Controllers/OrderController.php
+namespace App\Http\Controllers;
+
+use App\Contracts\PaymentGateway;   // Interface type‑hinted
+use Illuminate\Http\Request;
+
+class OrderController extends Controller
+{
+    protected $gateway;
+
+    // Laravel automatically injects the concrete class bound above
+    public function __construct(PaymentGateway $gateway)
     {
-        // morphTo will look for commentable_id and commentable_type columns
-        return $this->morphTo();
+        $this->gateway = $gateway;   // $gateway is an instance of StripePaymentGateway
+    }
+
+    public function store(Request $request)
+    {
+        $orderData = $request->only(['amount', 'currency']);
+        // Use the injected payment gateway to process the payment
+        $result = $this->gateway->charge($orderData['amount'], $orderData['currency']);
+
+        if ($result->successful()) {
+            // ...handle successful order
+        }
+
+        // ...handle failure
     }
 }
 
-// Post model – one possible parent
-class Post extends Model
+// app/Contracts/PaymentGateway.php
+namespace App\Contracts;
+
+interface PaymentGateway
 {
-    // A post can have many comments
-    public function comments()
-    {
-        // morphMany tells Laravel this model can have many related comments
-        return $this->morphMany(Comment::class, 'commentable');
-    }
+    public function charge(float $amount, string $currency);
 }
 
-// Video model – another possible parent
-class Video extends Model
+// app/Services/StripePaymentGateway.php
+namespace App\Services;
+
+use App\Contracts\PaymentGateway;
+use Stripe\StripeClient;
+
+class StripePaymentGateway implements PaymentGateway
 {
-    // A video can have many comments as well
-    public function comments()
+    protected $stripe;
+
+    public function __construct()
     {
-        return $this->morphMany(Comment::class, 'commentable');
+        // Initialize Stripe client (could also be injected)
+        $this->stripe = new StripeClient(config('services.stripe.secret'));
+    }
+
+    public function charge(float $amount, string $currency)
+    {
+        // Perform the charge using Stripe's API
+        return $this->stripe->charges->create([
+            'amount' => $amount * 100,   // Stripe expects amount in cents
+            'currency' => $currency,
+            'source' => 'tok_visa',      // In real apps, use a token from the front‑end
+        ]);
     }
 }
-
-// Storing a comment for a post
-$post = Post::find(1);
-$post->comments()->create([
-    'body' => 'Great article!',
-    'user_id' => auth()->id(),
-]);
-
-// Storing a comment for a video
-$video = Video::find(5);
-$video->comments()->create([
-    'body' => 'Nice tutorial!',
-    'user_id' => auth()->id(),
-]);
-
-// Retrieving comments for a post
-$postComments = $post->comments; // Collection of Comment objects
-
-// Accessing the owning model from a comment
-$comment = Comment::find(10);
-$owner = $comment->commentable; // Returns either a Post or Video instance depending on the type
-?>
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures
+Topic: Recursive Common Table Expressions (CTEs) in MySQL
 
 Explanation:
-- A stored procedure is a named set of SQL statements that can be stored in the database and executed repeatedly.
-- It allows you to encapsulate complex logic, loops, and conditional processing on the server side.
-- Parameters can be defined as IN, OUT, or INOUT to pass values into and retrieve results from the procedure.
-- Using stored procedures can improve performance by reducing network round‑trips and centralizing business rules.
-- They also help with security, as you can grant execution rights without exposing underlying tables.
+A recursive CTE lets you query hierarchical or tree‑structured data in a single SELECT statement.  
+You define an anchor query that returns the first level of rows, then a recursive member that references the CTE itself to walk deeper levels.  
+The recursion stops when the recursive member returns no rows, preventing infinite loops.  
+MySQL 8.0+ supports recursive CTEs using the WITH RECURSIVE clause.  
+Typical use cases include organizational charts, bill‑of‑materials, and graph traversals.
 
-Code example (with comments):
-CREATE PROCEDURE GetCustomerOrders(IN cust_id INT, OUT order_count INT)
-BEGIN
-    -- Count the number of orders for the given customer
-    SELECT COUNT(*) INTO order_count
-    FROM orders
-    WHERE customer_id = cust_id;
+Code example with comments:
+-- Sample table representing an employee hierarchy
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(50),
+    manager_id INT NULL   -- NULL means top‑level manager
+);
 
-    -- Optionally, you could return the list of orders as a result set
-    SELECT order_id, order_date, total_amount
-    FROM orders
-    WHERE customer_id = cust_id
-    ORDER BY order_date DESC;
-END;
--- To call the procedure and retrieve the OUT parameter:
-CALL GetCustomerOrders(42, @totalOrders);
-SELECT @totalOrders AS TotalOrdersForCustomer42;
+-- Insert sample data
+INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
+(1, 'Alice', NULL),      -- CEO
+(2, 'Bob', 1),           -- reports to Alice
+(3, 'Carol', 1),         -- reports to Alice
+(4, 'Dave', 2),          -- reports to Bob
+(5, 'Eve', 2),           -- reports to Bob
+(6, 'Frank', 3);         -- reports to Carol
+
+-- Recursive CTE to list all subordinates of a given manager (e.g., manager_id = 1)
+WITH RECURSIVE subordinates AS (
+    -- Anchor member: start with the direct reports of the chosen manager
+    SELECT emp_id, emp_name, manager_id, 1 AS level
+    FROM employees
+    WHERE manager_id = 1
+
+    UNION ALL
+
+    -- Recursive member: find employees whose manager is in the previous level
+    SELECT e.emp_id, e.emp_name, e.manager_id, s.level + 1
+    FROM employees e
+    INNER JOIN subordinates s ON e.manager_id = s.emp_id
+)
+SELECT emp_id, emp_name, manager_id, level
+FROM subordinates
+ORDER BY level, emp_id;
 */
 
 /* JavaScript
-Topic: Closures and the Module Pattern
+Topic: Closures in JavaScript
 
-Explanation:
-Closures allow a function to retain access to its lexical scope even after the outer function has finished executing. By leveraging closures, developers can create private variables and encapsulate functionality, mimicking the behavior of classes or modules. The module pattern uses an immediately‑invoked function expression (IIFE) to expose a public API while keeping internal details hidden. This approach helps prevent global namespace pollution and protects internal state from unintended modification. Understanding closures is essential for writing maintainable, testable JavaScript code.
+Explanation:  
+A closure is created when an inner function accesses variables from an outer function after the outer function has finished executing.  
+The inner function retains a reference to the outer scope's variables, allowing them to persist across multiple calls.  
+Closures are useful for data encapsulation, creating private state, and implementing function factories.  
+They enable patterns such as memoization, currying, and module-like structures without using classes.  
+Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state between functions.
 
-Code example:
-// Define a module using an IIFE and closures
-var CounterModule = (function () {
-    // Private variable, not accessible from outside
-    var count = 0;
+Code example:  
+function makeCounter(initialValue) {  
+    // The variable count is private to the outer function's scope  
+    let count = initialValue;  
 
-    // Private helper function
-    function log(message) {
-        console.log('[Counter] ' + message);
-    }
+    // The returned inner function forms a closure over count  
+    return function() {  
+        // Each call increments and returns the private count  
+        count += 1;  
+        return count;  
+    };  
+}  
 
-    // Expose public methods
-    return {
-        // Increments the count and logs the new value
-        increment: function () {
-            count++;
-            log('incremented to ' + count);
-            return count;
-        },
-        // Decrements the count and logs the new value
-        decrement: function () {
-            count--;
-            log('decremented to ' + count);
-            return count;
-        },
-        // Returns the current count without allowing direct modification
-        getValue: function () {
-            return count;
-        }
-    };
-})(); // The IIFE executes immediately, creating the module
+// Create a new counter starting at 10  
+const counter = makeCounter(10);  
 
-// Using the module
-CounterModule.increment(); // logs: [Counter] incremented to 1
-CounterModule.increment(); // logs: [Counter] incremented to 2
-CounterModule.decrement(); // logs: [Counter] decremented to 1
-console.log('Current count:', CounterModule.getValue()); // prints: Current count: 1
+console.log(counter()); // 11  
+console.log(counter()); // 12  
+console.log(counter()); // 13  
 
-// Trying to access the private variable directly will fail
-console.log(CounterModule.count); // undefined, as count is hidden inside the closure.
+// A second counter has its own independent private count  
+const anotherCounter = makeCounter(100);  
+console.log(anotherCounter()); // 101  
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API
+Topic: Few‑Shot Prompt Engineering with OpenAI’s GPT‑4 API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a handful of example input‑output pairs inside the same request, guiding it toward the desired behavior without fine‑tuning. By carefully constructing the system message and a few user‑assistant exchanges, you can steer the model to follow custom formats, adhere to business rules, or emulate a specific writing style. This technique works well for tasks like data extraction, code generation, or domain‑specific Q&A where a full dataset is unavailable. The approach is inexpensive, flexible, and can be altered on the fly by modifying the example set. It also demonstrates how prompt design complements traditional model training in practical applications.
+Few‑shot prompting lets you guide a large language model by providing a handful of example input‑output pairs inside the prompt. This technique reduces the need for fine‑tuning while achieving task‑specific behavior. By carefully selecting diverse, representative examples and clearly separating them with delimiters, the model can infer the pattern you expect it to follow. Adjusting temperature, max tokens, and stop sequences further refines the output quality. This approach is especially useful for rapid prototyping, custom data extraction, and on‑the‑fly text transformation without managing separate model versions.  
 
-Code example (Node.js, using the official openai npm package):
-```javascript
-// Load the OpenAI client library
-const { Configuration, OpenAIApi } = require("openai");
+Code example (Python, using openai library):  
 
-// Initialize with your API key (store securely, e.g., in environment variables)
-const configuration = new Configuration({
-    apiKey: process.env.OPENAI_API_KEY,
-});
-const openai = new OpenAIApi(configuration);
+import os  
+import openai  
 
-// Define a few‑shot prompt that teaches the model to translate
-// informal English sentences into formal business language
-const messages = [
-    { role: "system", content: "You are a professional writer who rewrites casual sentences into formal business language." },
-    // Example 1
-    { role: "user", content: "Hey, can you send me the report?" },
-    { role: "assistant", content: "Could you please forward the report to me at your earliest convenience?" },
-    // Example 2
-    { role: "user", content: "I need that data ASAP." },
-    { role: "assistant", content: "I would appreciate receiving the data as soon as possible." },
-    // New query
-    { role: "user", content: "Let’s meet tomorrow to discuss the project." }
-];
+# Load your API key from an environment variable for security  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-// Call the Chat Completion endpoint
-async function rewrite() {
-    try {
-        const response = await openai.createChatCompletion({
-            model: "gpt-4o-mini",
-            messages: messages,
-            temperature: 0.2   // low temperature for deterministic output
-        });
-        const rewritten = response.data.choices[0].message.content;
-        console.log("Rewritten sentence:", rewritten);
-    } catch (error) {
-        console.error("API request failed:", error);
-    }
-}
+def few_shot_completion(user_query):  
+    # Define a prompt that includes two demonstration Q&A pairs  
+    prompt = (  
+        "Q: Translate the following English sentence to French: \"The cat sits on the mat.\"\n"  
+        "A: Le chat s'assoit sur le tapis.\n\n"  
+        "Q: Translate the following English sentence to French: \"She enjoys reading books.\"\n"  
+        "A: Elle aime lire des livres.\n\n"  
+        f"Q: Translate the following English sentence to French: \"{user_query}\"\n"  
+        "A:"  
+    )  
 
-// Execute the function
-rewrite();
-```
+    response = openai.ChatCompletion.create(  
+        model="gpt-4",  
+        messages=[{"role": "user", "content": prompt}],  
+        temperature=0.2,          # low temperature for deterministic translation  
+        max_tokens=60,            # enough for a short sentence  
+        stop=["\n"]               # stop after the first line of the answer  
+    )  
+
+    # Extract the model's answer from the response payload  
+    answer = response.choices[0].message.content.strip()  
+    return answer  
+
+# Example usage  
+english_sentence = "The weather is pleasant today."  
+french_translation = few_shot_completion(english_sentence)  
+print(f"English: {english_sentence}")  
+print(f"French: {french_translation}")  
 */
 
