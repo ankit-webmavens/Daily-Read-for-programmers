@@ -1,251 +1,197 @@
 <?php
-// 2026-09-29 07:26:51
+// 2026-09-30 07:18:31
 
 /* PHP
-Topic: PHP PDO Prepared Statements
+Topic: PHP Namespaces  
 
-Explanation:
-Prepared statements in PDO separate the SQL query from its parameters, improving security by preventing SQL injection. 
-They allow the database engine to parse and compile the statement once, then execute it multiple times with different values. 
-Binding parameters ensures correct data types are sent to the database. 
-Errors are easier to handle because the statement preparation is distinct from execution. 
-Using prepared statements also often yields better performance for repeated queries.
+Explanation:  
+Namespaces in PHP allow you to group related classes, interfaces, functions, and constants under a single name, preventing naming collisions in large projects or when using third‑party libraries. A namespace is declared at the top of a file with the `namespace` keyword, and you can reference members inside it directly, or import them with `use`. When two classes share the same name but reside in different namespaces, they can coexist without conflict. Namespaces also improve code readability by clearly indicating the logical module a piece of code belongs to. They are especially useful in modern frameworks and Composer‑based projects where many packages are combined.
 
-Code example:
-// Connect to the database using PDO
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
+Code example with comments:  
 
-try {
-    $pdo = new PDO($dsn, $username, $password);
-    // Set error mode to exceptions for better error handling
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    die('Connection failed: ' . $e->getMessage());
-}
+<?php  
+// Declare a namespace for the library utilities  
+namespace MyApp\Utils;  
 
-// Prepare an INSERT statement with named placeholders
-$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
-$stmt = $pdo->prepare($sql);
+// A simple class inside the namespace  
+class StringHelper {  
+    // Convert a string to snake_case  
+    public static function toSnake(string $input): string {  
+        // Replace spaces and hyphens with underscores, then lowercase  
+        $snake = preg_replace('/[\\s-]+/', '_', $input);  
+        return strtolower($snake);  
+    }  
+}  
 
-// Bind values to the placeholders
-$stmt->bindValue(':username', 'alice', PDO::PARAM_STR);
-$stmt->bindValue(':email', 'alice@example.com', PDO::PARAM_STR);
+// --------------------------------------------------  
+// In another file you can import and use the class:  
 
-// Execute the statement
-if ($stmt->execute()) {
-    echo "New user inserted with ID: " . $pdo->lastInsertId();
-} else {
-    echo "Insert failed.";
-}
+// Declare a different (or global) namespace  
+namespace MyApp\Controllers;  
+
+// Import the StringHelper class from the Utils namespace  
+use MyApp\Utils\StringHelper;  
+
+// Use the imported class without fully qualifying its name  
+$original = "Hello World Example";  
+$snake = StringHelper::toSnake($original);  
+echo $snake; // Outputs: hello_world_example  
+
+// --------------------------------------------------  
+// You can also reference the class with its fully qualified name without a use statement:  
+
+$snake2 = \MyApp\Utils\StringHelper::toSnake("Another Test");  
+echo $snake2; // Outputs: another_test  
 */
 
 /* Laravel
-Topic: Laravel Service Container & Automatic Dependency Injection
+Topic: Laravel Queues with Redis
 
-Explanation:
-The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection automatically. It resolves objects by inspecting their constructors, allowing you to type‑hint interfaces or classes and have the container provide the appropriate implementation. This promotes loose coupling, easier testing, and cleaner controller code. You can bind concrete classes, interfaces, or even closures to the container, and specify singleton or transient lifetimes. When a class is resolved, the container injects all required dependencies recursively, simplifying complex object graphs.
+Explanation:  
+Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or performing API calls to a background worker. By default Laravel supports several drivers; using Redis as the queue driver provides fast in‑memory processing and easy scaling. You define a job class that implements the handle method, then dispatch the job from anywhere in your application. The queue worker listens to the Redis queue and processes jobs sequentially or in parallel, depending on your supervisor configuration. This pattern keeps the user‑facing request fast while ensuring heavy work is completed reliably.
 
-Code Example (app/Providers/AppServiceProvider.php):
+Code example (Job class and dispatching):
 
-public function register()
+<?php
+
+namespace App\Jobs;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Mail; // example service
+
+class SendWelcomeEmail implements ShouldQueue
 {
-    // Bind an interface to a concrete implementation as a singleton
-    $this->app->singleton(
-        App\Contracts\PaymentGateway::class,
-        App\Services\StripePaymentGateway::class
-    );
-}
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-// app/Http/Controllers/OrderController.php
-namespace App\Http\Controllers;
+    protected $user; // the user instance to email
 
-use App\Contracts\PaymentGateway;   // Interface type‑hinted
-use Illuminate\Http\Request;
-
-class OrderController extends Controller
-{
-    protected $gateway;
-
-    // Laravel automatically injects the concrete class bound above
-    public function __construct(PaymentGateway $gateway)
+    // Constructor receives the data needed for the job
+    public function __construct($user)
     {
-        $this->gateway = $gateway;   // $gateway is an instance of StripePaymentGateway
+        $this->user = $user;
     }
 
-    public function store(Request $request)
+    // This method is called by the worker process
+    public function handle()
     {
-        $orderData = $request->only(['amount', 'currency']);
-        // Use the injected payment gateway to process the payment
-        $result = $this->gateway->charge($orderData['amount'], $orderData['currency']);
-
-        if ($result->successful()) {
-            // ...handle successful order
-        }
-
-        // ...handle failure
+        // You can use any service; here we send an email
+        Mail::to($this->user->email)->send(new \App\Mail\WelcomeMail($this->user));
     }
 }
 
-// app/Contracts/PaymentGateway.php
-namespace App\Contracts;
+// Dispatch the job from a controller or any other place
+// This will push the job onto the Redis queue named "default"
+$user = \App\Models\User::find(1);
+SendWelcomeEmail::dispatch($user);
 
-interface PaymentGateway
-{
-    public function charge(float $amount, string $currency);
-}
+ // To start the worker, run in terminal:
+ // php artisan queue:work redis --queue=default --daemon
 
-// app/Services/StripePaymentGateway.php
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-use Stripe\StripeClient;
-
-class StripePaymentGateway implements PaymentGateway
-{
-    protected $stripe;
-
-    public function __construct()
-    {
-        // Initialize Stripe client (could also be injected)
-        $this->stripe = new StripeClient(config('services.stripe.secret'));
-    }
-
-    public function charge(float $amount, string $currency)
-    {
-        // Perform the charge using Stripe's API
-        return $this->stripe->charges->create([
-            'amount' => $amount * 100,   // Stripe expects amount in cents
-            'currency' => $currency,
-            'source' => 'tok_visa',      // In real apps, use a token from the front‑end
-        ]);
-    }
-}
+ // Ensure your .env has the queue driver set:
+ // QUEUE_CONNECTION=redis
+ // REDIS_HOST=127.0.0.1
+ // REDIS_PASSWORD=null
+ // REDIS_PORT=6379
 */
 
 /* MySQL
-Topic: Recursive Common Table Expressions (CTEs) in MySQL
+Topic: Recursive Common Table Expressions (CTE) in MySQL
 
-Explanation:
-A recursive CTE lets you query hierarchical or tree‑structured data in a single SELECT statement.  
-You define an anchor query that returns the first level of rows, then a recursive member that references the CTE itself to walk deeper levels.  
-The recursion stops when the recursive member returns no rows, preventing infinite loops.  
-MySQL 8.0+ supports recursive CTEs using the WITH RECURSIVE clause.  
-Typical use cases include organizational charts, bill‑of‑materials, and graph traversals.
+Explanation: 
+Recursive CTEs allow you to generate hierarchical or sequential data without needing procedural loops. 
+They consist of an anchor member that provides the starting rows and a recursive member that references the CTE itself. 
+The recursion stops when the recursive member returns no rows, which MySQL controls with a maximum recursion depth (default 1000). 
+Recursive CTEs are useful for traversing tree structures, generating date series, or calculating factorials. 
+Remember to include the keyword RECURSIVE after WITH to enable recursion.
 
 Code example with comments:
--- Sample table representing an employee hierarchy
-CREATE TABLE employees (
-    emp_id INT PRIMARY KEY,
-    emp_name VARCHAR(50),
-    manager_id INT NULL   -- NULL means top‑level manager
-);
-
--- Insert sample data
-INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
-(1, 'Alice', NULL),      -- CEO
-(2, 'Bob', 1),           -- reports to Alice
-(3, 'Carol', 1),         -- reports to Alice
-(4, 'Dave', 2),          -- reports to Bob
-(5, 'Eve', 2),           -- reports to Bob
-(6, 'Frank', 3);         -- reports to Carol
-
--- Recursive CTE to list all subordinates of a given manager (e.g., manager_id = 1)
-WITH RECURSIVE subordinates AS (
-    -- Anchor member: start with the direct reports of the chosen manager
-    SELECT emp_id, emp_name, manager_id, 1 AS level
-    FROM employees
-    WHERE manager_id = 1
-
+-- Enable recursive CTE to generate the first ten Fibonacci numbers
+WITH RECURSIVE fib AS (
+    -- Anchor member: start with the first two Fibonacci numbers
+    SELECT 1 AS n, 0 AS fib_n, 1 AS fib_n1
     UNION ALL
-
-    -- Recursive member: find employees whose manager is in the previous level
-    SELECT e.emp_id, e.emp_name, e.manager_id, s.level + 1
-    FROM employees e
-    INNER JOIN subordinates s ON e.manager_id = s.emp_id
+    -- Recursive member: calculate next number until n reaches 10
+    SELECT n + 1,
+           fib_n1,
+           fib_n + fib_n1
+    FROM fib
+    WHERE n < 10
 )
-SELECT emp_id, emp_name, manager_id, level
-FROM subordinates
-ORDER BY level, emp_id;
+SELECT n AS position,
+       fib_n AS fibonacci_number
+FROM fib
+ORDER BY n;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: JavaScript Closures
 
 Explanation:  
-A closure is created when an inner function accesses variables from an outer function after the outer function has finished executing.  
-The inner function retains a reference to the outer scope's variables, allowing them to persist across multiple calls.  
-Closures are useful for data encapsulation, creating private state, and implementing function factories.  
-They enable patterns such as memoization, currying, and module-like structures without using classes.  
-Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state between functions.
+A closure is a function that retains access to its lexical scope even when executed outside that scope. It allows inner functions to remember the environment in which they were created, preserving variables from the outer function. Closures are useful for data encapsulation, creating private variables, and implementing factories or module patterns. Because the inner function holds references to the outer variables, those variables stay alive as long as the closure exists. Understanding closures helps avoid common pitfalls like unintended shared state in loops or callbacks.
 
-Code example:  
-function makeCounter(initialValue) {  
-    // The variable count is private to the outer function's scope  
-    let count = initialValue;  
+Code Example:
+// Outer function that creates a private counter
+function createCounter(initialValue) {
+    let count = initialValue;                // private variable, not accessible directly
 
-    // The returned inner function forms a closure over count  
-    return function() {  
-        // Each call increments and returns the private count  
-        count += 1;  
-        return count;  
-    };  
-}  
+    // Inner function forms a closure over 'count'
+    return function(step) {
+        count += step;                       // modifies the private variable
+        console.log('Current count:', count);
+    };
+}
 
-// Create a new counter starting at 10  
-const counter = makeCounter(10);  
+// Using the closure
+const counterA = createCounter(0);           // separate instance with its own 'count'
+counterA(5);                                 // prints: Current count: 5
+counterA(3);                                 // prints: Current count: 8
 
-console.log(counter()); // 11  
-console.log(counter()); // 12  
-console.log(counter()); // 13  
-
-// A second counter has its own independent private count  
-const anotherCounter = makeCounter(100);  
-console.log(anotherCounter()); // 101  
+const counterB = createCounter(10);          // another independent instance
+counterB(2);                                 // prints: Current count: 12
+counterA(1);                                 // prints: Current count: 9  (counterA's state unchanged by counterB)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s GPT‑4 API  
+Topic: Prompt Engineering for Few‑Shot Learning with the OpenAI Chat Completion API  
 
 Explanation:  
-Few‑shot prompting lets you guide a large language model by providing a handful of example input‑output pairs inside the prompt. This technique reduces the need for fine‑tuning while achieving task‑specific behavior. By carefully selecting diverse, representative examples and clearly separating them with delimiters, the model can infer the pattern you expect it to follow. Adjusting temperature, max tokens, and stop sequences further refines the output quality. This approach is especially useful for rapid prototyping, custom data extraction, and on‑the‑fly text transformation without managing separate model versions.  
+1. Few‑shot prompting supplies the model with a few example input‑output pairs to illustrate the desired task, improving consistency without fine‑tuning.  
+2. The prompt is built as a list of messages where system messages set the behavior, user messages provide examples, and the final user message contains the new query.  
+3. Selecting clear, concise examples and explicitly stating the output format reduces ambiguity and helps the model generalize.  
+4. Temperature should be set low (e.g., 0.2) for deterministic results when you need structured answers.  
+5. The approach works for classification, transformation, and data extraction tasks across many domains.  
 
-Code example (Python, using openai library):  
+Code example (Python, using the openai package):
 
-import os  
-import openai  
+import os
+import openai
 
-# Load your API key from an environment variable for security  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Load your API key from an environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def few_shot_completion(user_query):  
-    # Define a prompt that includes two demonstration Q&A pairs  
-    prompt = (  
-        "Q: Translate the following English sentence to French: \"The cat sits on the mat.\"\n"  
-        "A: Le chat s'assoit sur le tapis.\n\n"  
-        "Q: Translate the following English sentence to French: \"She enjoys reading books.\"\n"  
-        "A: Elle aime lire des livres.\n\n"  
-        f"Q: Translate the following English sentence to French: \"{user_query}\"\n"  
-        "A:"  
-    )  
+# Define a few‑shot prompt for extracting product information from a description
+messages = [
+    {"role": "system", "content": "You are a helpful assistant that extracts product name, price, and availability from a short description. Respond in JSON format with keys: name, price, in_stock."},
+    {"role": "user", "content": "The sleek XYZ headphones are now available for $79.99 and are in stock."},
+    {"role": "assistant", "content": '{"name": "XYZ headphones", "price": 79.99, "in_stock": true}'},
+    {"role": "user", "content": "Our new model, the AlphaSmartwatch, costs $199 and will be released next month."},
+    {"role": "assistant", "content": '{"name": "AlphaSmartwatch", "price": 199, "in_stock": false}'},
+    # New query to be processed
+    {"role": "user", "content": "Check out the TurboBlend 3000 mixer, priced at $129.50, currently out of stock."}
+]
 
-    response = openai.ChatCompletion.create(  
-        model="gpt-4",  
-        messages=[{"role": "user", "content": prompt}],  
-        temperature=0.2,          # low temperature for deterministic translation  
-        max_tokens=60,            # enough for a short sentence  
-        stop=["\n"]               # stop after the first line of the answer  
-    )  
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",          # Choose a suitable model
+    messages=messages,
+    temperature=0.2,              # Low temperature for consistent JSON output
+    max_tokens=150
+)
 
-    # Extract the model's answer from the response payload  
-    answer = response.choices[0].message.content.strip()  
-    return answer  
-
-# Example usage  
-english_sentence = "The weather is pleasant today."  
-french_translation = few_shot_completion(english_sentence)  
-print(f"English: {english_sentence}")  
-print(f"French: {french_translation}")  
+# Print the assistant's JSON answer
+print(response["choices"][0]["message"]["content"])
 */
 
