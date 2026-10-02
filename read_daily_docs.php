@@ -1,242 +1,179 @@
 <?php
-// 2026-10-01 07:41:16
+// 2026-10-02 07:28:33
 
 /* PHP
 Topic: Using PDO Prepared Statements for Secure Database Access
 
-Explanation:  
+Explanation:
+PDO (PHP Data Objects) provides a consistent interface for accessing different databases.  
 Prepared statements separate SQL code from data, preventing SQL injection attacks.  
-The PDO (PHP Data Objects) extension provides a uniform interface for various databases.  
-You first create a PDO instance with the appropriate DSN, username, and password.  
-Then you prepare an SQL statement with placeholders, bind values, and execute it.  
-After execution you can fetch results as associative arrays or objects, and the connection is automatically closed when the script ends.  
+You can bind parameters by name or position, and PDO automatically handles quoting.  
+Prepared statements also improve performance when executing the same query multiple times.  
+Error handling can be managed with exceptions, making debugging easier.
 
-Code example (with comments):  
-<?php  
-// Create a new PDO instance to connect to a MySQL database  
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';  
-$username = 'dbuser';  
-$password = 'dbpass';  
-$options = [  
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors  
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch rows as associative arrays  
-];  
-$pdo = new PDO($dsn, $username, $password, $options);  
+Code example:
+// Create a new PDO instance (replace placeholders with your DB credentials)
+$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'username', 'password');
+// Set error mode to exceptions
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-// Prepare an INSERT statement with named placeholders  
-$sql = 'INSERT INTO users (email, password_hash) VALUES (:email, :hash)';  
-$stmt = $pdo->prepare($sql);  
+// Prepare an INSERT statement with named placeholders
+$stmt = $pdo->prepare('INSERT INTO users (username, email, age) VALUES (:username, :email, :age)');
 
-// Bind values to the placeholders and execute the statement  
-$email = 'alice@example.com';  
-$hash = password_hash('secret123', PASSWORD_BCRYPT);  
-$stmt->bindParam(':email', $email);  
-$stmt->bindParam(':hash', $hash);  
-$stmt->execute();  
+// Bind values to the placeholders
+$stmt->bindValue(':username', $username, PDO::PARAM_STR);
+$stmt->bindValue(':email', $email, PDO::PARAM_STR);
+$stmt->bindValue(':age', $age, PDO::PARAM_INT);
 
-// Prepare a SELECT statement to fetch the inserted row  
-$selectSql = 'SELECT id, email FROM users WHERE email = :email';  
-$selectStmt = $pdo->prepare($selectSql);  
-$selectStmt->execute([':email' => $email]);  
+// Execute the statement
+$stmt->execute();
 
-// Fetch the result as an associative array  
-$user = $selectStmt->fetch();  
-if ($user) {  
-    echo 'User ID: ' . $user['id'] . ', Email: ' . $user['email'];  
-} else {  
-    echo 'User not found.';  
-}  
-
-// No need to explicitly close the connection; it closes when the script ends  
-?>
+// Check if the insert was successful
+if ($stmt->rowCount() === 1) {
+    echo 'User added successfully.';
+} else {
+    echo 'Failed to add user.';
+}
 */
 
 /* Laravel
-Topic: Laravel Queues and Jobs
+Topic: Route Model Binding  
 
 Explanation:  
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing files, or making API calls, so they run in the background instead of blocking the request cycle. By pushing a job onto a queue, Laravel stores the job payload in a driver (database, Redis, SQS, etc.) and a worker process later retrieves and executes it. This improves application responsiveness and enables horizontal scaling by adding more workers as demand grows. Queues also support retry attempts, job timeouts, and failure handling out of the box. You define jobs as plain PHP classes that implement the ShouldQueue contract and contain a handle method where the actual work is performed.
+Laravel's route model binding automatically injects Eloquent model instances into route callbacks or controller methods based on the URL parameters. When a route contains a parameter that matches a model's primary key, Laravel queries the database and supplies the model or aborts with a 404 if not found. There are two styles: implicit binding, which works out‑of‑the‑box when the parameter name and the type‑hinted variable match, and explicit binding, where you define custom resolution logic in the RouteServiceProvider. Implicit binding saves boilerplate by eliminating manual findOrFail calls. Explicit binding is useful for using alternative keys, applying global scopes, or binding non‑Eloquent classes.
 
-Code example (app/Jobs/SendWelcomeEmail.php):
+Code example:  
 
-<?php
+// routes/web.php  
+use App\Http\Controllers\PostController;  
+Route::get('posts/{post}', [PostController::class, 'show']);  
 
-namespace App\Jobs;
+// app/Http/Controllers/PostController.php  
+namespace App\Http\Controllers;  
+use App\Models\Post;  
+class PostController extends Controller {  
+    // Laravel injects the Post model instance automatically (implicit binding)  
+    public function show(Post $post) {  
+        // $post is already a fully loaded model; you can return it or pass to a view  
+        return view('posts.show', compact('post'));  
+    }  
+}  
 
-use App\Models\User;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;          // Marks the job for queue processing
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Mail;                                            // Facade for sending email
+// app/Providers/RouteServiceProvider.php (for explicit binding)  
+use Illuminate\Support\Facades\Route;  
+use App\Models\User;  
+public function boot() {  
+    // Bind the {user} parameter to a User model using the 'username' column instead of id  
+    Route::bind('user', function ($value) {  
+        return User::where('username', $value)->firstOrFail();  
+    });  
+    parent::boot();  
+}  
 
-class SendWelcomeEmail implements ShouldQueue
-{
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+// routes/web.php (using explicit binding)  
+use App\Http\Controllers\UserController;  
+Route::get('profile/{user}', [UserController::class, 'profile']);  
 
-    protected $user;                                 // Store the user instance
-
-    /**
-     * Create a new job instance.
-     *
-     * @param  User  $user
-     * @return void
-     */
-    public function __construct(User $user)
-    {
-        $this->user = $user;                         // Inject the user when dispatching
-    }
-
-    /**
-     * Execute the job.
-     *
-     * @return void
-     */
-    public function handle()
-    {
-        // Build the email data
-        $data = ['user' => $this->user];
-
-        // Send the email using a mailable or a simple closure
-        Mail::send('emails.welcome', $data, function ($message) {
-            $message->to($this->user->email)
-                    ->subject('Welcome to Our Platform');
-        });
-    }
-}
-
-Dispatching the job (e.g., in a controller after registration):
-
-use App\Jobs\SendWelcomeEmail;
-
-// After creating the user...
-$user = User::create($validatedData);
-
-// Push the job onto the default queue
-SendWelcomeEmail::dispatch($user);   // Returns immediately, job will be processed by a worker
-
-Running the worker (from the command line):
-
-php artisan queue:work --tries=3   // Processes jobs, retries up to 3 times on failure.
+// app/Http/Controllers/UserController.php  
+namespace App\Http\Controllers;  
+use App\Models\User;  
+class UserController extends Controller {  
+    public function profile(User $user) {  
+        // $user is resolved via the explicit binding defined above  
+        return view('users.profile', compact('user'));  
+    }  
+}  
 */
 
 /* MySQL
-Topic: Stored Procedures in MySQL  
+Topic: MySQL Transactions and ACID Guarantees
 
 Explanation:  
-A stored procedure is a named set of SQL statements that is stored in the database server and can be executed repeatedly.  
-Procedures help encapsulate business logic, reduce client‑side code, and improve performance by minimizing round‑trips.  
-They can accept input parameters, return output parameters, and contain control‑flow statements such as IF and LOOP.  
-MySQL supports declaring variables, handling errors with DECLARE ... HANDLER, and committing or rolling back transactions inside a procedure.  
-Using procedures also enhances security because you can grant users permission to execute the procedure without giving direct access to underlying tables.  
+- A transaction is a logical unit of work that must be either fully completed or fully rolled back, ensuring data consistency.  
+- MySQL implements the ACID properties (Atomicity, Consistency, Isolation, Durability) to protect transactional integrity.  
+- By default, InnoDB tables support transactions; you can start a transaction with START TRANSACTION and end it with COMMIT or ROLLBACK.  
+- Isolation levels (READ UNCOMMITTED, READ COMMITTED, REPEATABLE READ, SERIALIZABLE) control how concurrent transactions see each other's changes.  
+- Proper use of transactions prevents problems such as lost updates, dirty reads, and phantom rows in multi‑user environments.  
 
-Example:  
+Code Example (with inline comments):
 
-DELIMITER $$  
-CREATE PROCEDURE TransferFunds(  
-    IN p_from_account INT,  
-    IN p_to_account   INT,  
-    IN p_amount       DECIMAL(10,2)  
-)  
-BEGIN  
-    DECLARE insufficient_funds CONDITION FOR SQLSTATE '45000';  
-  
-    -- Check that the source account has enough balance  
-    IF (SELECT balance FROM accounts WHERE account_id = p_from_account) < p_amount THEN  
-        SIGNAL insufficient_funds SET MESSAGE_TEXT = 'Insufficient funds';  
-    END IF;  
-  
-    -- Debit the source account  
-    UPDATE accounts  
-    SET balance = balance - p_amount  
-    WHERE account_id = p_from_account;  
-  
-    -- Credit the destination account  
-    UPDATE accounts  
-    SET balance = balance + p_amount  
-    WHERE account_id = p_to_account;  
-  
-    COMMIT;  
-END$$  
-DELIMITER ;  
+START TRANSACTION;                     -- begin a new transaction
+INSERT INTO accounts (user_id, balance) VALUES (101, 500);  -- add a new account
+UPDATE accounts SET balance = balance - 200 WHERE user_id = 101;  -- debit the account
+INSERT INTO transactions (account_id, amount, type) VALUES (101, -200, 'debit');  -- log the debit
+/* Check a business rule: balance must not go negative */
+SELECT balance FROM accounts WHERE user_id = 101;  -- retrieve current balance
+-- if the balance is negative, roll back the whole transaction
+ROLLBACK;                              -- abort all changes if rule violated
+-- otherwise, finalize the changes
+COMMIT;                                -- make all changes permanent
 
--- To call the procedure:  
-CALL TransferFunds(101, 202, 250.00);   (this line is just an example call)
+Note: Replace the ROLLBACK with COMMIT after confirming the balance is non‑negative. The isolation level can be set per session with SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ; before START TRANSACTION.
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: Debouncing a Function to Optimize Event Handling  
 
 Explanation:  
-A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This happens because the inner function forms a lexical environment that captures the surrounding scope. Closures are useful for creating private data, implementing function factories, and preserving state across multiple calls. They enable patterns like memoization and module encapsulation without relying on global variables. Understanding closures is essential for mastering asynchronous code and callbacks in JavaScript.
+Debouncing limits how often a function can be executed by postponing its call until a specified wait time has elapsed since the last invocation. It is especially useful for performance‑critical events such as window resizing, scrolling, or keystroke handling where the native event may fire many times per second. The debounce wrapper returns a new function that tracks a timer; each call resets the timer, ensuring the original function runs only after the activity has paused. This technique reduces unnecessary calculations, DOM updates, or network requests, leading to smoother UI interactions. Implementing debounce manually helps developers understand closures and timer management in JavaScript.  
 
-Code example (with comments):
-function createCounter(initialValue) {            // outer function, creates a private counter
-  let count = initialValue;                       // variable to be captured by the inner function
+Code Example:  
+function debounce(func, wait) {  
+    let timeoutId = null;                     // holds the timer reference  
+    return function(...args) {                // returned debounced function  
+        const context = this;                  // preserve 'this' for later use  
+        clearTimeout(timeoutId);               // cancel any pending execution  
+        timeoutId = setTimeout(() => {         // schedule new execution after wait  
+            func.apply(context, args);        // invoke original function with correct context and arguments  
+        }, wait);                              // wait period in milliseconds  
+    };  
+}  
 
-  return function increment(step = 1) {           // inner function forms a closure over 'count'
-    count += step;                                // modifies the captured variable
-    return count;                                 // returns the updated count
-  };
-}
+// Usage example: log the window width after resizing stops for 300 ms  
+const handleResize = debounce(() => {  
+    console.log('Window width:', window.innerWidth);  
+}, 300);  
 
-// Using the closure
-const counterA = createCounter(0);                // counterA has its own private 'count'
-console.log(counterA());       // 1
-console.log(counterA(5));      // 6
-console.log(counterA());       // 7
-
-const counterB = createCounter(10);               // separate closure, independent 'count'
-console.log(counterB());       // 11
-console.log(counterB(2));      // 13
-
-// The 'count' variable is not accessible from the outside, demonstrating encapsulation.
+window.addEventListener('resize', handleResize);   // attach debounced handler to resize event
 */
 
 /* AI
-Topic: Few-Shot Prompt Engineering for GPT‑3.5
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting lets you guide a large language model by providing a few example input‑output pairs within the same request. This technique reduces the need for extensive fine‑tuning while still achieving task‑specific behavior. By carefully selecting diverse examples, the model can infer the desired pattern and apply it to new inputs. It works well for classification, transformation, and generation tasks where labeled data is scarce. The approach is simple to implement using the OpenAI API and works with both chat and completion endpoints.
+Few‑shot prompting supplies the model with a handful of example input‑output pairs, guiding it to produce the desired format for new queries. By embedding these demonstrations directly in the system or user messages, you can control style, tone, and structure without fine‑tuning. This technique works well for tasks like data extraction, code generation, or custom Q&A. It is lightweight, requires only API calls, and adapts quickly to changing requirements. Properly chosen examples dramatically improve consistency and reduce hallucinations.  
 
-Code example (Python, using the openai library):
-import openai
+Code example (Python, using the openai library):  
 
-# Set your OpenAI API key (replace with your actual key or use environment variable)
-openai.api_key = "sk-YOUR_API_KEY"
+import os  
+import openai  
 
-def classify_sentiment(text):
-    """
-    Classify the sentiment of the given text as Positive, Negative, or Neutral
-    using a few‑shot prompt.
-    """
-    # Define a prompt that includes two labeled examples and the new query
-    prompt = (
-        "Classify the sentiment of the following sentences as Positive, Negative, or Neutral.\n\n"
-        "Sentence: I love the new design of the app.\n"
-        "Sentiment: Positive\n\n"
-        "Sentence: The update caused many crashes and is frustrating.\n"
-        "Sentiment: Negative\n\n"
-        f"Sentence: {text}\n"
-        "Sentiment:"
-    )
+# Load your API key from an environment variable or other secure source  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-    # Call the completion endpoint with temperature set low for deterministic output
-    response = openai.Completion.create(
-        model="text-davinci-003",
-        prompt=prompt,
-        max_tokens=10,
-        temperature=0.0,
-        stop=["\n"]
-    )
-    # Extract and return the sentiment label from the response
-    sentiment = response.choices[0].text.strip()
-    return sentiment
+# Define a few‑shot prompt: a system message that sets the role, followed by example user‑assistant exchanges  
+messages = [  
+    {"role": "system", "content": "You are a helpful assistant that extracts contact information from short email snippets and returns JSON with 'name', 'email', and 'phone' fields."},  
+    # Example 1  
+    {"role": "user", "content": "Hi, this is John Doe. You can reach me at john.doe@example.com or call 555‑123‑4567."},  
+    {"role": "assistant", "content": '{"name": "John Doe", "email": "john.doe@example.com", "phone": "555-123-4567"}'},  
+    # Example 2  
+    {"role": "user", "content": "Hey there, Sara Smith here. My email: s.smith@company.org. Phone: +1 (800) 555‑0199."},  
+    {"role": "assistant", "content": '{"name": "Sara Smith", "email": "s.smith@company.org", "phone": "+1 (800) 555-0199"}'},  
+    # New query to process  
+    {"role": "user", "content": "Hello, I’m Michael Lee. Contact: michael.lee@service.net, 212-555-0000."}  
+]  
 
-# Example usage
-sample = "The documentation was clear and helpful."
-print(f"Input: {sample}")
-print("Predicted Sentiment:", classify_sentiment(sample))
+# Call the Chat Completion endpoint with temperature=0 for deterministic output  
+response = openai.ChatCompletion.create(  
+    model="gpt-4o-mini",  
+    messages=messages,  
+    temperature=0,  
+    max_tokens=150  
+)  
+
+# Extract and print the assistant’s response (the JSON result)  
+result = response.choices[0].message.content  
+print("Extracted contact info:", result)  
 */
 
