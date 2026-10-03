@@ -1,179 +1,251 @@
 <?php
-// 2026-10-02 07:28:33
+// 2026-10-03 07:02:25
 
 /* PHP
-Topic: Using PDO Prepared Statements for Secure Database Access
+Topic: Anonymous Functions and Closures in PHP  
 
-Explanation:
-PDO (PHP Data Objects) provides a consistent interface for accessing different databases.  
-Prepared statements separate SQL code from data, preventing SQL injection attacks.  
-You can bind parameters by name or position, and PDO automatically handles quoting.  
-Prepared statements also improve performance when executing the same query multiple times.  
-Error handling can be managed with exceptions, making debugging easier.
+Explanation:  
+Anonymous functions (also called closures) are functions without a declared name that can be stored in variables, passed as arguments, or returned from other functions. They are useful for creating short, one‑off callbacks or for encapsulating logic that needs its own scope. PHP allows these functions to capture variables from the surrounding scope using the `use` keyword, creating a closure. Closures can also be bound to objects, giving them access to the object's private members. They are heavily used in array manipulation functions like `array_map`, `array_filter`, and in event‑driven code.
 
-Code example:
-// Create a new PDO instance (replace placeholders with your DB credentials)
-$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'username', 'password');
-// Set error mode to exceptions
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+Code example (with inline comments):
 
-// Prepare an INSERT statement with named placeholders
-$stmt = $pdo->prepare('INSERT INTO users (username, email, age) VALUES (:username, :email, :age)');
+<?php
+// Define an array of numbers
+$numbers = [1, 2, 3, 4, 5];
 
-// Bind values to the placeholders
-$stmt->bindValue(':username', $username, PDO::PARAM_STR);
-$stmt->bindValue(':email', $email, PDO::PARAM_STR);
-$stmt->bindValue(':age', $age, PDO::PARAM_INT);
+// Create an anonymous function that multiplies each element by a factor
+$factor = 3;
+$multiply = function($value) use ($factor) {
+    // $factor is captured from the outer scope
+    return $value * $factor;
+};
 
-// Execute the statement
-$stmt->execute();
+// Apply the closure to each element using array_map
+$tripled = array_map($multiply, $numbers);
 
-// Check if the insert was successful
-if ($stmt->rowCount() === 1) {
-    echo 'User added successfully.';
-} else {
-    echo 'Failed to add user.';
-}
+// Output the result
+print_r($tripled); // Expected: Array ( [0] => 3 [1] => 6 [2] => 9 [3] => 12 [4] => 15 )
+
+// Another example: a closure that maintains its own state
+$counter = (function() {
+    $count = 0;
+    return function() use (&$count) {
+        // Increment and return the internal counter each time the closure is called
+        $count++;
+        return $count;
+    };
+})();
+
+echo $counter(); // 1
+echo $counter(); // 2
+echo $counter(); // 3
+?>
 */
 
 /* Laravel
-Topic: Route Model Binding  
+Topic: Laravel Queues with Redis
 
-Explanation:  
-Laravel's route model binding automatically injects Eloquent model instances into route callbacks or controller methods based on the URL parameters. When a route contains a parameter that matches a model's primary key, Laravel queries the database and supplies the model or aborts with a 404 if not found. There are two styles: implicit binding, which works out‑of‑the‑box when the parameter name and the type‑hinted variable match, and explicit binding, where you define custom resolution logic in the RouteServiceProvider. Implicit binding saves boilerplate by eliminating manual findOrFail calls. Explicit binding is useful for using alternative keys, applying global scopes, or binding non‑Eloquent classes.
+Explanation:
+Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or generating reports to a background worker. By default Laravel supports many drivers; Redis is a fast, in‑memory data store that works well for high‑throughput queue workloads. You define a job class that contains a handle method, dispatch the job from anywhere in your application, and a worker process will pull jobs from the Redis list and execute them. The queue connection is configured in config/queue.php, and you can monitor the queue with Laravel Horizon for a visual dashboard. Using queues improves user experience because the HTTP request returns immediately while the heavy work runs asynchronously.
 
-Code example:  
+Code example (plain text, with comments):
 
-// routes/web.php  
-use App\Http\Controllers\PostController;  
-Route::get('posts/{post}', [PostController::class, 'show']);  
+// app/Jobs/SendWelcomeEmail.php
+<?php
+namespace App\Jobs;
 
-// app/Http/Controllers/PostController.php  
-namespace App\Http\Controllers;  
-use App\Models\Post;  
-class PostController extends Controller {  
-    // Laravel injects the Post model instance automatically (implicit binding)  
-    public function show(Post $post) {  
-        // $post is already a fully loaded model; you can return it or pass to a view  
-        return view('posts.show', compact('post'));  
-    }  
-}  
+use App\Mail\WelcomeMail;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Mail;
 
-// app/Providers/RouteServiceProvider.php (for explicit binding)  
-use Illuminate\Support\Facades\Route;  
-use App\Models\User;  
-public function boot() {  
-    // Bind the {user} parameter to a User model using the 'username' column instead of id  
-    Route::bind('user', function ($value) {  
-        return User::where('username', $value)->firstOrFail();  
-    });  
-    parent::boot();  
-}  
+class SendWelcomeEmail implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-// routes/web.php (using explicit binding)  
-use App\Http\Controllers\UserController;  
-Route::get('profile/{user}', [UserController::class, 'profile']);  
+    protected $user; // the user instance to email
 
-// app/Http/Controllers/UserController.php  
-namespace App\Http\Controllers;  
-use App\Models\User;  
-class UserController extends Controller {  
-    public function profile(User $user) {  
-        // $user is resolved via the explicit binding defined above  
-        return view('users.profile', compact('user'));  
-    }  
-}  
+    // Constructor receives the user model
+    public function __construct($user)
+    {
+        $this->user = $user;
+    }
+
+    // This method is called by the queue worker
+    public function handle()
+    {
+        // Build and send the welcome email
+        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
+    }
+}
+?>
+
+// Dispatch the job (e.g., in a controller after registration)
+<?php
+use App\Jobs\SendWelcomeEmail;
+
+// $user is the newly created user model
+SendWelcomeEmail::dispatch($user); // pushes the job onto the Redis queue
+?>
+
+// config/queue.php – set the default connection to redis
+return [
+    'default' => env('QUEUE_CONNECTION', 'redis'),
+
+    'connections' => [
+        'redis' => [
+            'driver' => 'redis',
+            'connection' => 'default',
+            'queue' => env('REDIS_QUEUE', 'default'),
+            'retry_after' => 90,
+            'block_for' => null,
+        ],
+        // other connections...
+    ],
+];
+
+// .env – define Redis queue connection
+QUEUE_CONNECTION=redis
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+// Run a queue worker that listens to the redis queue
+// In the terminal execute:
+php artisan queue:work redis --sleep=3 --tries=3
+
+// (Optional) Install Horizon for monitoring
+composer require laravel/horizon
+php artisan horizon:install
+php artisan horizon   // starts the Horizon dashboard
+```
 */
 
 /* MySQL
-Topic: MySQL Transactions and ACID Guarantees
+Topic: Common Table Expressions (CTEs) in MySQL  
 
 Explanation:  
-- A transaction is a logical unit of work that must be either fully completed or fully rolled back, ensuring data consistency.  
-- MySQL implements the ACID properties (Atomicity, Consistency, Isolation, Durability) to protect transactional integrity.  
-- By default, InnoDB tables support transactions; you can start a transaction with START TRANSACTION and end it with COMMIT or ROLLBACK.  
-- Isolation levels (READ UNCOMMITTED, READ COMMITTED, REPEATABLE READ, SERIALIZABLE) control how concurrent transactions see each other's changes.  
-- Proper use of transactions prevents problems such as lost updates, dirty reads, and phantom rows in multi‑user environments.  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs improve readability by allowing you to break complex queries into logical building blocks.  
+They can be recursive, enabling hierarchical data traversal such as organizational charts or bill‑of‑materials.  
+MySQL supports both non‑recursive and recursive CTEs starting with version 8.0.  
+CTEs are defined using the WITH clause and exist only for the duration of the statement in which they appear.  
 
-Code Example (with inline comments):
+Code example:  
+WITH RECURSIVE employee_hierarchy AS (  
+    -- Anchor member: start with top‑level managers (no manager_id)  
+    SELECT employee_id, name, manager_id, 1 AS level  
+    FROM employees  
+    WHERE manager_id IS NULL  
 
-START TRANSACTION;                     -- begin a new transaction
-INSERT INTO accounts (user_id, balance) VALUES (101, 500);  -- add a new account
-UPDATE accounts SET balance = balance - 200 WHERE user_id = 101;  -- debit the account
-INSERT INTO transactions (account_id, amount, type) VALUES (101, -200, 'debit');  -- log the debit
-/* Check a business rule: balance must not go negative */
-SELECT balance FROM accounts WHERE user_id = 101;  -- retrieve current balance
--- if the balance is negative, roll back the whole transaction
-ROLLBACK;                              -- abort all changes if rule violated
--- otherwise, finalize the changes
-COMMIT;                                -- make all changes permanent
+    UNION ALL  
 
-Note: Replace the ROLLBACK with COMMIT after confirming the balance is non‑negative. The isolation level can be set per session with SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ; before START TRANSACTION.
+    -- Recursive member: find subordinates of the previous level  
+    SELECT e.employee_id, e.name, e.manager_id, eh.level + 1  
+    FROM employees e  
+    JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id  
+)  
+SELECT employee_id, name, manager_id, level  
+FROM employee_hierarchy  
+ORDER BY level, manager_id;  
 */
 
 /* JavaScript
-Topic: Debouncing a Function to Optimize Event Handling  
+Topic: Async/Await for handling asynchronous operations
 
 Explanation:  
-Debouncing limits how often a function can be executed by postponing its call until a specified wait time has elapsed since the last invocation. It is especially useful for performance‑critical events such as window resizing, scrolling, or keystroke handling where the native event may fire many times per second. The debounce wrapper returns a new function that tracks a timer; each call resets the timer, ensuring the original function runs only after the activity has paused. This technique reduces unnecessary calculations, DOM updates, or network requests, leading to smoother UI interactions. Implementing debounce manually helps developers understand closures and timer management in JavaScript.  
+Async/await is syntactic sugar over promises that makes asynchronous code look synchronous.  
+Declare a function with the async keyword; it automatically returns a promise.  
+Inside the async function, use await before any promise to pause execution until it resolves.  
+Wrap await calls in try/catch blocks to handle rejected promises cleanly.  
+This pattern improves readability and simplifies error handling compared to chaining .then() and .catch().
 
-Code Example:  
-function debounce(func, wait) {  
-    let timeoutId = null;                     // holds the timer reference  
-    return function(...args) {                // returned debounced function  
-        const context = this;                  // preserve 'this' for later use  
-        clearTimeout(timeoutId);               // cancel any pending execution  
-        timeoutId = setTimeout(() => {         // schedule new execution after wait  
-            func.apply(context, args);        // invoke original function with correct context and arguments  
-        }, wait);                              // wait period in milliseconds  
-    };  
+Code example with comments:  
+
+async function fetchUserData(userId) {  
+    // The function returns a promise because it is marked async  
+    const url = `https://api.example.com/users/${userId}`;  
+
+    try {  
+        // Await the fetch call; execution pauses here until the response arrives  
+        const response = await fetch(url);  
+
+        // Check if the HTTP status is OK; otherwise throw an error  
+        if (!response.ok) {  
+            throw new Error(`Network response was not ok: ${response.status}`);  
+        }  
+
+        // Await the parsing of the JSON body  
+        const data = await response.json();  
+
+        // Return the parsed data; it will be wrapped in a resolved promise  
+        return data;  
+
+    } catch (error) {  
+        // Any error thrown above (network failure, non‑OK status, JSON parse error) is caught here  
+        console.error('Error fetching user data:', error);  
+        // Re‑throw to allow callers to handle the error as well  
+        throw error;  
+    }  
 }  
 
-// Usage example: log the window width after resizing stops for 300 ms  
-const handleResize = debounce(() => {  
-    console.log('Window width:', window.innerWidth);  
-}, 300);  
-
-window.addEventListener('resize', handleResize);   // attach debounced handler to resize event
+// Example usage of the async function  
+(async () => {  
+    try {  
+        const user = await fetchUserData(42);  
+        console.log('User data:', user);  
+    } catch (e) {  
+        console.log('Failed to retrieve user data.');  
+    }  
+})();
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a handful of example input‑output pairs, guiding it to produce the desired format for new queries. By embedding these demonstrations directly in the system or user messages, you can control style, tone, and structure without fine‑tuning. This technique works well for tasks like data extraction, code generation, or custom Q&A. It is lightweight, requires only API calls, and adapts quickly to changing requirements. Properly chosen examples dramatically improve consistency and reduce hallucinations.  
+Few‑shot prompting supplies the model with a small number of example inputs and desired outputs within the same request, guiding its behavior without fine‑tuning. By framing a clear pattern, the model can generalize to new, unseen queries that follow the same structure. This technique is especially useful for tasks like classification, transformation, or generating code snippets where a few representative cases are enough to set expectations. The approach reduces latency compared to building a custom fine‑tuned model and works directly with the standard chat completion endpoint. Careful ordering of examples and concise system instructions improve reliability and consistency.
 
-Code example (Python, using the openai library):  
+Code example (Python, using the openai library):
+import os
+import openai
 
-import os  
-import openai  
+# Set your API key – ensure the environment variable is defined securely
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Load your API key from an environment variable or other secure source  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Define a system message that sets the overall role
+system_msg = {"role": "system", "content": "You are a helpful assistant that converts natural‑language math questions into Python code."}
 
-# Define a few‑shot prompt: a system message that sets the role, followed by example user‑assistant exchanges  
-messages = [  
-    {"role": "system", "content": "You are a helpful assistant that extracts contact information from short email snippets and returns JSON with 'name', 'email', and 'phone' fields."},  
-    # Example 1  
-    {"role": "user", "content": "Hi, this is John Doe. You can reach me at john.doe@example.com or call 555‑123‑4567."},  
-    {"role": "assistant", "content": '{"name": "John Doe", "email": "john.doe@example.com", "phone": "555-123-4567"}'},  
-    # Example 2  
-    {"role": "user", "content": "Hey there, Sara Smith here. My email: s.smith@company.org. Phone: +1 (800) 555‑0199."},  
-    {"role": "assistant", "content": '{"name": "Sara Smith", "email": "s.smith@company.org", "phone": "+1 (800) 555-0199"}'},  
-    # New query to process  
-    {"role": "user", "content": "Hello, I’m Michael Lee. Contact: michael.lee@service.net, 212-555-0000."}  
-]  
+# Provide two few‑shot examples (user → assistant)
+example_1_user = {"role": "user", "content": "Calculate the factorial of 5."}
+example_1_assist = {"role": "assistant", "content": "import math\nresult = math.factorial(5)\nprint(result)"}
 
-# Call the Chat Completion endpoint with temperature=0 for deterministic output  
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",  
-    messages=messages,  
-    temperature=0,  
-    max_tokens=150  
-)  
+example_2_user = {"role": "user", "content": "Find the sum of the first 10 integers."}
+example_2_assist = {"role": "assistant", "content": "total = sum(range(1, 11))\nprint(total)"}
 
-# Extract and print the assistant’s response (the JSON result)  
-result = response.choices[0].message.content  
-print("Extracted contact info:", result)  
+# New query we want the model to handle using the same pattern
+new_query = {"role": "user", "content": "Generate a list of squares from 1 to 7."}
+
+# Assemble the message sequence
+messages = [
+    system_msg,
+    example_1_user, example_1_assist,
+    example_2_user, example_2_assist,
+    new_query
+]
+
+# Call the chat completion endpoint
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",
+    messages=messages,
+    temperature=0.0  # deterministic output for code generation
+)
+
+# Extract and display the generated Python code
+generated_code = response.choices[0].message.content
+print("Generated Python code:\n", generated_code)
 */
 
