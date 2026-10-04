@@ -1,251 +1,291 @@
 <?php
-// 2026-10-03 07:02:25
+// 2026-10-04 07:21:43
 
 /* PHP
 Topic: Anonymous Functions and Closures in PHP  
 
 Explanation:  
-Anonymous functions (also called closures) are functions without a declared name that can be stored in variables, passed as arguments, or returned from other functions. They are useful for creating short, one‑off callbacks or for encapsulating logic that needs its own scope. PHP allows these functions to capture variables from the surrounding scope using the `use` keyword, creating a closure. Closures can also be bound to objects, giving them access to the object's private members. They are heavily used in array manipulation functions like `array_map`, `array_filter`, and in event‑driven code.
+Anonymous functions, also called closures, allow you to create functions without naming them.  
+They can capture variables from the surrounding scope, enabling powerful functional patterns.  
+Closures are useful for callbacks, array manipulation, and creating lightweight, one‑off logic.  
+PHP automatically binds the `$this` context inside a closure when used within a class.  
+You can also manually bind a different object or `null` using the `bindTo` method.  
 
-Code example (with inline comments):
+Code example:  
 
-<?php
-// Define an array of numbers
-$numbers = [1, 2, 3, 4, 5];
+<?php  
+// Define an array of numbers  
+$numbers = [1, 2, 3, 4, 5];  
 
-// Create an anonymous function that multiplies each element by a factor
-$factor = 3;
-$multiply = function($value) use ($factor) {
-    // $factor is captured from the outer scope
-    return $value * $factor;
-};
+// Use an anonymous function as a callback for array_map  
+$squared = array_map(function($n) {  
+    // This function squares each element and returns the result  
+    return $n * $n;  
+}, $numbers);  
 
-// Apply the closure to each element using array_map
-$tripled = array_map($multiply, $numbers);
+// Output the squared numbers  
+print_r($squared);  
 
-// Output the result
-print_r($tripled); // Expected: Array ( [0] => 3 [1] => 6 [2] => 9 [3] => 12 [4] => 15 )
+// Example of a closure capturing an external variable  
+$multiplier = 3;  
+$multiply = function($value) use ($multiplier) {  
+    // $multiplier is captured from the outer scope  
+    return $value * $multiplier;  
+};  
 
-// Another example: a closure that maintains its own state
-$counter = (function() {
-    $count = 0;
-    return function() use (&$count) {
-        // Increment and return the internal counter each time the closure is called
-        $count++;
-        return $count;
-    };
-})();
+echo $multiply(10); // prints 30  
 
-echo $counter(); // 1
-echo $counter(); // 2
-echo $counter(); // 3
+// Binding a closure to a different object (optional)  
+class Greeter {  
+    private $greeting = 'Hello';  
+    public function getGreetingFunction() {  
+        return function($name) {  
+            // $this refers to the Greeter instance when bound  
+            return $this->greeting . ', ' . $name . '!';  
+        };  
+    }  
+}  
+
+$greeter = new Greeter();  
+$greetFn = $greeter->getGreetingFunction();  
+echo $greetFn('Alice'); // prints "Hello, Alice!"  
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues with Redis
+Topic: Laravel Service Container & Dependency Injection
 
-Explanation:
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or generating reports to a background worker. By default Laravel supports many drivers; Redis is a fast, in‑memory data store that works well for high‑throughput queue workloads. You define a job class that contains a handle method, dispatch the job from anywhere in your application, and a worker process will pull jobs from the Redis list and execute them. The queue connection is configured in config/queue.php, and you can monitor the queue with Laravel Horizon for a visual dashboard. Using queues improves user experience because the HTTP request returns immediately while the heavy work runs asynchronously.
+Explanation:  
+The Laravel service container is a powerful tool that manages class dependencies and performs automatic resolution. It enables you to bind abstractions to concrete implementations, making your code more modular and testable. When a class is type‑hinted in a controller or another class, the container automatically injects the required instance. This process is called dependency injection and reduces the need for manual object creation. By leveraging the container, you can swap implementations without changing the dependent code, supporting the SOLID principles.
 
-Code example (plain text, with comments):
-
-// app/Jobs/SendWelcomeEmail.php
+Code example (with comments):
 <?php
-namespace App\Jobs;
 
-use App\Mail\WelcomeMail;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Mail;
+namespace App\Providers;
 
-class SendWelcomeEmail implements ShouldQueue
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\PaymentGateway;
+use App\Services\StripePaymentGateway;
+
+class AppServiceProvider extends ServiceProvider
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    protected $user; // the user instance to email
-
-    // Constructor receives the user model
-    public function __construct($user)
+    // Register bindings in the container
+    public function register()
     {
-        $this->user = $user;
+        // Bind the interface to a concrete class
+        $this->app->bind(PaymentGateway::class, function ($app) {
+            // You could read config values here if needed
+            return new StripePaymentGateway(config('services.stripe.secret'));
+        });
+    }
+}
+
+// ------------------------------------------------------------
+
+namespace App\Contracts;
+
+interface PaymentGateway
+{
+    // Define a contract for processing payments
+    public function charge(float $amount, string $currency);
+}
+
+// ------------------------------------------------------------
+
+namespace App\Services;
+
+use App\Contracts\PaymentGateway;
+use Stripe\StripeClient;
+
+class StripePaymentGateway implements PaymentGateway
+{
+    protected $stripe;
+
+    public function __construct(string $secretKey)
+    {
+        // Initialise the Stripe client with the secret key
+        $this->stripe = new StripeClient($secretKey);
     }
 
-    // This method is called by the queue worker
-    public function handle()
+    public function charge(float $amount, string $currency)
     {
-        // Build and send the welcome email
-        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
+        // Perform the actual charge using Stripe's API
+        return $this->stripe->charges->create([
+            'amount'   => $amount * 100, // amount in cents
+            'currency' => $currency,
+            'source'   => 'tok_visa',    // test token
+        ]);
+    }
+}
+
+// ------------------------------------------------------------
+
+namespace App\Http\Controllers;
+
+use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
+
+class CheckoutController extends Controller
+{
+    protected $paymentGateway;
+
+    // Laravel automatically injects the bound implementation
+    public function __construct(PaymentGateway $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
+
+    public function charge(Request $request)
+    {
+        $amount   = $request->input('amount');
+        $currency = $request->input('currency', 'usd');
+
+        // Use the injected payment gateway to process the charge
+        $result = $this->paymentGateway->charge($amount, $currency);
+
+        return response()->json($result);
     }
 }
 ?>
-
-// Dispatch the job (e.g., in a controller after registration)
-<?php
-use App\Jobs\SendWelcomeEmail;
-
-// $user is the newly created user model
-SendWelcomeEmail::dispatch($user); // pushes the job onto the Redis queue
-?>
-
-// config/queue.php – set the default connection to redis
-return [
-    'default' => env('QUEUE_CONNECTION', 'redis'),
-
-    'connections' => [
-        'redis' => [
-            'driver' => 'redis',
-            'connection' => 'default',
-            'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => 90,
-            'block_for' => null,
-        ],
-        // other connections...
-    ],
-];
-
-// .env – define Redis queue connection
-QUEUE_CONNECTION=redis
-REDIS_HOST=127.0.0.1
-REDIS_PASSWORD=null
-REDIS_PORT=6379
-
-// Run a queue worker that listens to the redis queue
-// In the terminal execute:
-php artisan queue:work redis --sleep=3 --tries=3
-
-// (Optional) Install Horizon for monitoring
-composer require laravel/horizon
-php artisan horizon:install
-php artisan horizon   // starts the Horizon dashboard
-```
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) in MySQL  
+Topic: MySQL Stored Procedures
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs improve readability by allowing you to break complex queries into logical building blocks.  
-They can be recursive, enabling hierarchical data traversal such as organizational charts or bill‑of‑materials.  
-MySQL supports both non‑recursive and recursive CTEs starting with version 8.0.  
-CTEs are defined using the WITH clause and exist only for the duration of the statement in which they appear.  
+A stored procedure is a named set of SQL statements stored on the MySQL server that can be invoked repeatedly.  
+It allows you to encapsulate complex logic, loop constructs, and conditional processing inside the database.  
+Parameters can be passed in (IN), out (OUT), or both (INOUT), enabling flexible data exchange with the caller.  
+Procedures improve performance by reducing network round‑trips because the logic runs server‑side.  
+They also help enforce business rules consistently across different applications that share the same database.
 
-Code example:  
-WITH RECURSIVE employee_hierarchy AS (  
-    -- Anchor member: start with top‑level managers (no manager_id)  
-    SELECT employee_id, name, manager_id, 1 AS level  
-    FROM employees  
-    WHERE manager_id IS NULL  
+Code Example (with inline comments):
+CREATE PROCEDURE GetCustomerOrders(IN p_customer_id INT, OUT p_total_orders INT)
+BEGIN
+    -- Initialize the output variable
+    SET p_total_orders = 0;
 
-    UNION ALL  
+    -- Count the number of orders for the given customer
+    SELECT COUNT(*) INTO p_total_orders
+    FROM orders
+    WHERE customer_id = p_customer_id;
 
-    -- Recursive member: find subordinates of the previous level  
-    SELECT e.employee_id, e.name, e.manager_id, eh.level + 1  
-    FROM employees e  
-    JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id  
-)  
-SELECT employee_id, name, manager_id, level  
-FROM employee_hierarchy  
-ORDER BY level, manager_id;  
+    -- If the customer has no orders, raise a notice (optional)
+    IF p_total_orders = 0 THEN
+        SELECT CONCAT('Customer ', p_customer_id, ' has no orders.') AS message;
+    END IF;
+END;
+-- To call the procedure and retrieve the result:
+-- CALL GetCustomerOrders(123, @orderCount);
+-- SELECT @orderCount AS total_orders;
 */
 
 /* JavaScript
-Topic: Async/Await for handling asynchronous operations
+Topic: Debouncing in JavaScript
 
-Explanation:  
-Async/await is syntactic sugar over promises that makes asynchronous code look synchronous.  
-Declare a function with the async keyword; it automatically returns a promise.  
-Inside the async function, use await before any promise to pause execution until it resolves.  
-Wrap await calls in try/catch blocks to handle rejected promises cleanly.  
-This pattern improves readability and simplifies error handling compared to chaining .then() and .catch().
+Explanation:
+Debouncing is a technique that limits how often a function can be invoked. It is especially useful for performance‑critical events such as window resizing, scrolling, or keypresses, where the handler might be called many times per second. The debounced function postpones its execution until after a specified wait time has elapsed since the last call. If the event fires again before the wait period ends, the timer resets, ensuring the original function runs only once after the rapid activity stops. This helps reduce unnecessary calculations, network requests, or DOM updates.
 
-Code example with comments:  
+Code example (with comments):
 
-async function fetchUserData(userId) {  
-    // The function returns a promise because it is marked async  
-    const url = `https://api.example.com/users/${userId}`;  
+function debounce(func, wait) {
+    // Holds the timeout identifier between calls
+    let timeoutId = null;
 
-    try {  
-        // Await the fetch call; execution pauses here until the response arrives  
-        const response = await fetch(url);  
+    // Return a new function that wraps the original
+    return function(...args) {
+        // If a timer is already running, clear it
+        if (timeoutId !== null) {
+            clearTimeout(timeoutId);
+        }
 
-        // Check if the HTTP status is OK; otherwise throw an error  
-        if (!response.ok) {  
-            throw new Error(`Network response was not ok: ${response.status}`);  
-        }  
+        // Set a new timer to invoke the original function after 'wait' ms
+        timeoutId = setTimeout(() => {
+            // Call the original function with the correct context and arguments
+            func.apply(this, args);
+        }, wait);
+    };
+}
 
-        // Await the parsing of the JSON body  
-        const data = await response.json();  
+// Usage example: log the window width only after the user stops resizing for 300ms
+const logWidth = debounce(() => {
+    console.log('Window width:', window.innerWidth);
+}, 300);
 
-        // Return the parsed data; it will be wrapped in a resolved promise  
-        return data;  
-
-    } catch (error) {  
-        // Any error thrown above (network failure, non‑OK status, JSON parse error) is caught here  
-        console.error('Error fetching user data:', error);  
-        // Re‑throw to allow callers to handle the error as well  
-        throw error;  
-    }  
-}  
-
-// Example usage of the async function  
-(async () => {  
-    try {  
-        const user = await fetchUserData(42);  
-        console.log('User data:', user);  
-    } catch (e) {  
-        console.log('Failed to retrieve user data.');  
-    }  
-})();
+window.addEventListener('resize', logWidth);
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
+Topic: Function Calling with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small number of example inputs and desired outputs within the same request, guiding its behavior without fine‑tuning. By framing a clear pattern, the model can generalize to new, unseen queries that follow the same structure. This technique is especially useful for tasks like classification, transformation, or generating code snippets where a few representative cases are enough to set expectations. The approach reduces latency compared to building a custom fine‑tuned model and works directly with the standard chat completion endpoint. Careful ordering of examples and concise system instructions improve reliability and consistency.
+1. Function calling lets a language model decide when to invoke a predefined function, turning natural‑language requests into structured data.  
+2. The model receives a list of function specifications (name, description, JSON schema) and can return a “function_call” object instead of a normal text response.  
+3. This approach improves reliability for tasks like data extraction, calendar scheduling, or code generation because the output follows a strict schema.  
+4. The developer receives the function name and arguments, executes the real code, and can feed the result back to the model for follow‑up conversation.  
+5. Using function calling reduces post‑processing effort and mitigates hallucinations when exact data formats are required.  
 
-Code example (Python, using the openai library):
-import os
-import openai
+Code Example (Python, using openai library):  
+import os  
+import json  
+import openai  
 
-# Set your API key – ensure the environment variable is defined securely
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set your API key – in practice load from environment or secret manager  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define a system message that sets the overall role
-system_msg = {"role": "system", "content": "You are a helpful assistant that converts natural‑language math questions into Python code."}
+# Define the function the model may call  
+functions = [  
+    {  
+        "name": "get_weather",  
+        "description": "Retrieve current weather for a given city",  
+        "parameters": {  
+            "type": "object",  
+            "properties": {  
+                "city": {"type": "string", "description": "Name of the city"},  
+                "unit": {"type": "string", "enum": ["celsius", "fahrenheit"], "default": "celsius"}  
+            },  
+            "required": ["city"]  
+        }  
+    }  
+]  
 
-# Provide two few‑shot examples (user → assistant)
-example_1_user = {"role": "user", "content": "Calculate the factorial of 5."}
-example_1_assist = {"role": "assistant", "content": "import math\nresult = math.factorial(5)\nprint(result)"}
+# User prompt asking for weather information  
+user_message = {"role": "user", "content": "What's the weather like in Tokyo right now?"}  
 
-example_2_user = {"role": "user", "content": "Find the sum of the first 10 integers."}
-example_2_assist = {"role": "assistant", "content": "total = sum(range(1, 11))\nprint(total)"}
+# First call – let the model decide whether to call the function  
+response = openai.ChatCompletion.create(  
+    model="gpt-4o-mini",  
+    messages=[user_message],  
+    functions=functions,  
+    function_call="auto"   # model can choose to call or respond normally  
+)  
 
-# New query we want the model to handle using the same pattern
-new_query = {"role": "user", "content": "Generate a list of squares from 1 to 7."}
+msg = response.choices[0].message  
 
-# Assemble the message sequence
-messages = [
-    system_msg,
-    example_1_user, example_1_assist,
-    example_2_user, example_2_assist,
-    new_query
-]
+if msg.get("function_call"):  
+    # Model decided to call get_weather – extract arguments  
+    function_name = msg["function_call"]["name"]  
+    arguments = json.loads(msg["function_call"]["arguments"])  
 
-# Call the chat completion endpoint
-response = openai.ChatCompletion.create(
-    model="gpt-4o-mini",
-    messages=messages,
-    temperature=0.0  # deterministic output for code generation
-)
+    # Simulated function implementation (replace with real API call)  
+    def get_weather(city, unit="celsius"):  
+        # Placeholder data – in production query a weather service  
+        dummy_data = {"Tokyo": {"celsius": 22, "fahrenheit": 71}}  
+        temp = dummy_data.get(city, {}).get(unit, "unknown")  
+        return {"city": city, "unit": unit, "temperature": temp}  
 
-# Extract and display the generated Python code
-generated_code = response.choices[0].message.content
-print("Generated Python code:\n", generated_code)
+    function_response = get_weather(**arguments)  
+
+    # Send the function result back to the model for a final answer  
+    follow_up = openai.ChatCompletion.create(  
+        model="gpt-4o-mini",  
+        messages=[user_message, msg, {"role": "function", "name": function_name, "content": json.dumps(function_response)}]  
+    )  
+
+    final_reply = follow_up.choices[0].message["content"]  
+    print(final_reply)  
+else:  
+    # Model answered directly without needing a function call  
+    print(msg["content"])
 */
 
