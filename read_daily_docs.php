@@ -1,94 +1,65 @@
 <?php
-// 2026-10-06 08:03:44
+// 2026-10-07 07:41:45
 
 /* PHP
-Topic: Using Prepared Statements with PDO for Secure Database Queries
+Topic: PHP Namespaces
 
 Explanation:
-Prepared statements separate SQL code from data, preventing SQL injection attacks by sending the query structure to the database first and then binding the parameters. PDO (PHP Data Objects) provides a uniform interface for many database systems, allowing you to prepare, bind, and execute statements efficiently. When you bind values, PDO automatically handles proper escaping and datatype conversion. This approach also improves performance for repeated queries because the database can reuse the compiled statement. Using prepared statements makes your code more readable and maintainable, especially in applications that handle user input.
+Namespaces in PHP allow you to group related classes, interfaces, functions, and constants under a single name, preventing naming collisions especially in large projects or when using third‑party libraries. They are defined with the `namespace` keyword at the top of a file and can be nested to create hierarchical structures. To use code from a namespace, you either import it with `use` or reference it with its fully qualified name. Namespaces also improve code readability by clearly indicating where each component belongs. When a file has no namespace declaration, its contents belong to the global namespace.
 
-Code example (PHP):
+Code example with comments:
 <?php
-// Create a new PDO instance (replace DSN, username, password with your own values)
-$pdo = new PDO('mysql:host=localhost;dbname=example_db;charset=utf8mb4', 'db_user', 'db_pass');
-// Enable exceptions for error handling
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+// Define a namespace for utility classes
+namespace MyApp\Utils;
 
-// SQL statement with named placeholders
-$sql = "INSERT INTO users (username, email, password_hash) VALUES (:username, :email, :pwd_hash)";
+// A simple class inside the namespace
+class StringHelper
+{
+    // Return the length of a string after trimming whitespace
+    public static function trimmedLength(string $text): int
+    {
+        return strlen(trim($text));
+    }
+}
 
-// Prepare the statement once
-$stmt = $pdo->prepare($sql);
+// Separate file or later in the same script, we import the class
+// using the fully qualified name or the `use` statement
+use MyApp\Utils\StringHelper;
 
-// Sample data to insert
-$username   = 'johndoe';
-$email      = 'john@example.com';
-$password   = 'Secret123!';
-$pwd_hash   = password_hash($password, PASSWORD_DEFAULT);
+// Call the static method from the imported class
+$sample = "  Hello, PHP!  ";
+$len = StringHelper::trimmedLength($sample);
+echo "Trimmed length: $len\n";
 
-// Bind parameters to the placeholders
-$stmt->bindParam(':username', $username, PDO::PARAM_STR);
-$stmt->bindParam(':email',    $email,    PDO::PARAM_STR);
-$stmt->bindParam(':pwd_hash', $pwd_hash, PDO::PARAM_STR);
-
-// Execute the prepared statement
-$stmt->execute();
-
-// Retrieve the ID of the newly inserted row
-$insertedId = $pdo->lastInsertId();
-echo "New user inserted with ID: " . $insertedId;
+// Alternatively, without the `use` statement you could call:
+// $len = \MyApp\Utils\StringHelper::trimmedLength($sample);
 ?>
 */
 
 /* Laravel
-Laravel Service Container & Dependency Injection
+Topic: Service Container and Dependency Injection
 
-The service container is the core of Laravel’s inversion of control system. It resolves class dependencies automatically, allowing you to type‑hint classes in constructors or methods. By binding abstractions to concrete implementations you can swap implementations without changing consumer code. This makes testing easier because you can inject mocks or fakes. The container also supports contextual bindings for more granular control over which implementation is used in specific situations.
+Explanation:
+The Laravel service container is a powerful tool that manages class dependencies and performs automatic injection. By binding interfaces to concrete implementations, you can decouple your code and make it more testable. When a class is resolved from the container, Laravel inspects its constructor and injects the required dependencies automatically. This mechanism works for controllers, jobs, events, and any class resolved via the container. Using dependency injection promotes a clean architecture and simplifies unit testing because you can swap implementations with mock objects.
 
-Example – a payment service interface, concrete class, binding in a service provider, and injection into a controller
-
-// app/Contracts/PaymentGateway.php
+Code Example (app/Providers/AppServiceProvider.php):
 <?php
-
-namespace App\Contracts;
-
-interface PaymentGateway
-{
-    public function charge(float $amount);
-}
-
-// app/Services/StripeGateway.php
-<?php
-
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-
-class StripeGateway implements PaymentGateway
-{
-    // Charge a customer using Stripe’s API (simplified)
-    public function charge(float $amount)
-    {
-        // Here you would call Stripe’s SDK
-        return "Charged $$amount with Stripe";
-    }
-}
-
-// app/Providers/AppServiceProvider.php
-<?php
-
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use App\Contracts\PaymentGateway;
-use App\Services\StripeGateway;
+use App\Services\StripePaymentGateway;
 
 class AppServiceProvider extends ServiceProvider
 {
+    // Register bindings in the container
     public function register()
     {
-        // Bind the interface to the concrete class
-        $this->app->bind(PaymentGateway::class, StripeGateway::class);
+        // Bind the PaymentGateway interface to the Stripe implementation
+        $this->app->bind(PaymentGateway::class, function ($app) {
+            // You could pull configuration values here if needed
+            return new StripePaymentGateway(config('services.stripe.secret'));
+        });
     }
 
     public function boot()
@@ -97,9 +68,8 @@ class AppServiceProvider extends ServiceProvider
     }
 }
 
-// app/Http/Controllers/OrderController.php
+Code Example (app/Http/Controllers/OrderController.php):
 <?php
-
 namespace App\Http\Controllers;
 
 use App\Contracts\PaymentGateway;
@@ -109,7 +79,7 @@ class OrderController extends Controller
 {
     protected $paymentGateway;
 
-    // Laravel automatically injects the bound implementation
+    // Laravel automatically injects the concrete implementation bound above
     public function __construct(PaymentGateway $paymentGateway)
     {
         $this->paymentGateway = $paymentGateway;
@@ -117,135 +87,130 @@ class OrderController extends Controller
 
     public function store(Request $request)
     {
-        $amount = $request->input('total');
-        // Use the injected service to process payment
-        $result = $this->paymentGateway->charge($amount);
+        $orderData = $request->all();
 
-        return response()->json(['message' => $result]);
+        // Use the injected payment gateway to process the payment
+        $result = $this->paymentGateway->charge($orderData['amount'], $orderData['currency']);
+
+        if ($result->successful()) {
+            // Proceed with order creation
+            // ...
+            return response()->json(['message' => 'Order placed successfully']);
+        }
+
+        return response()->json(['error' => 'Payment failed'], 422);
     }
 }
+The PaymentGateway interface (app/Contracts/PaymentGateway.php) defines the contract, and the StripePaymentGateway (app/Services/StripePaymentGateway.php) implements the actual API calls. By type‑hinting the interface in the controller, Laravel resolves the concrete class from the container, providing clean separation of concerns.
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) and Recursive Queries in MySQL
+Topic: Common Table Expressions (CTEs) in MySQL 8.0
 
-Explanation:
-- A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.
-- CTEs are defined using the WITH clause and can improve readability by breaking complex queries into logical parts.
-- MySQL 8.0+ supports both non‑recursive and recursive CTEs, the latter being useful for hierarchical or tree‑structured data.
-- Recursive CTEs consist of an anchor member (base case) and a recursive member that references the CTE itself.
-- They are evaluated in a loop until the recursive member returns no rows, allowing you to traverse parent‑child relationships.
+Explanation:  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs improve query readability by allowing you to define subqueries once and reuse them multiple times in the same statement.  
+They support recursion, enabling you to work with hierarchical data such as organizational charts or tree structures.  
+In MySQL 8.0 and later, CTEs are defined using the WITH clause placed before the main query.  
+CTEs are scoped to the statement that defines them and disappear after the statement finishes executing.
 
-Code example (with comments):
+Code example:
+WITH RECURSIVE employee_hierarchy AS (  
+    -- Anchor member: select the top‑level manager (no manager_id)  
+    SELECT employee_id, name, manager_id, 1 AS level  
+    FROM employees  
+    WHERE manager_id IS NULL  
 
-WITH RECURSIVE OrgChart AS (                     -- Define a recursive CTE named OrgChart
-    SELECT employee_id, manager_id, 1 AS level   -- Anchor member: start with top‑level employees
-    FROM employees
-    WHERE manager_id IS NULL                     -- No manager means top of hierarchy
-    UNION ALL
-    SELECT e.employee_id, e.manager_id, oc.level + 1   -- Recursive member: add one level deeper
-    FROM employees e
-    JOIN OrgChart oc ON e.manager_id = oc.employee_id -- Join current level to its subordinates
-)
-SELECT employee_id, manager_id, level
-FROM OrgChart
-ORDER BY level, manager_id;                     -- Result shows each employee with its hierarchy level.
+    UNION ALL  
+
+    -- Recursive member: find employees reporting to the previous level  
+    SELECT e.employee_id, e.name, e.manager_id, eh.level + 1  
+    FROM employees e  
+    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id  
+)  
+SELECT employee_id, name, manager_id, level  
+FROM employee_hierarchy  
+ORDER BY level, manager_id;
 */
 
 /* JavaScript
-Topic: Closures and the Module Pattern
+Topic: Closures and Lexical Scoping
 
 Explanation:
-Closures occur when an inner function retains access to variables defined in an outer function after the outer function has finished executing.  
-They allow private state to be encapsulated, preventing external code from directly modifying internal variables.  
-The module pattern uses a closure to expose a public API while keeping implementation details hidden.  
-This pattern is especially useful for organizing code in large applications and avoiding global namespace pollution.  
-Understanding closures is key to mastering asynchronous callbacks, event handlers, and functional programming in JavaScript.  
+A closure is a function that retains access to its lexical environment even after the outer function has finished executing. It allows inner functions to remember variables from the outer scope, enabling data privacy and function factories. Closures are created every time a function is defined, capturing the surrounding variables at that moment. They are essential for patterns like module encapsulation, partial application, and asynchronous callbacks. Understanding closures helps avoid common pitfalls such as unintentionally sharing mutable state across iterations.
 
-Code example (with comments):
-
+Code Example:
+// Outer function that creates a private counter
 function createCounter(initialValue) {
-    // private variable, not accessible from outside
-    let count = initialValue || 0;
+    // This variable is part of the lexical environment
+    let count = initialValue;
 
-    // return an object that forms the public API
-    return {
-        // method to increment the private count
-        increment: function() {
-            count += 1;
-            return count;
-        },
-        // method to retrieve the current count without exposing the variable itself
-        getValue: function() {
-            return count;
-        },
-        // method to reset the counter to a specific value
-        reset: function(newValue) {
-            count = newValue || 0;
-        }
+    // Inner function forms a closure over `count`
+    return function increment(step = 1) {
+        // It can read and modify `count` even after createCounter has returned
+        count += step;
+        return count;
     };
 }
 
-// Using the module
-const counter = createCounter(10);
-console.log(counter.getValue());   // 10
-console.log(counter.increment());  // 11
-counter.reset(5);
-console.log(counter.getValue());   // 5
+// Create two independent counters
+const counterA = createCounter(0);
+const counterB = createCounter(10);
 
-// Trying to access the private variable directly will fail
-console.log(counter.count);        // undefined (count is hidden inside the closure)
+// Use the counters
+console.log(counterA()); // 1  (0 + 1)
+console.log(counterA(2)); // 3  (1 + 2)
+console.log(counterB()); // 11 (10 + 1)
+console.log(counterB(5)); // 16 (11 + 5)   // each counter keeps its own private `count` variable.
 */
 
 /* AI
-Topic: Using OpenAI’s Chat Completion API in Python for interactive assistants
+Topic: Prompt Engineering for Few‑Shot Learning with OpenAI’s Chat Completion API  
 
 Explanation:  
-- The Chat Completion endpoint lets you send a list of messages and receive a context‑aware response from a large language model.  
-- You construct the request with a system prompt that defines the assistant’s behavior, followed by user messages.  
-- The API returns a JSON object containing the model’s reply, which you can parse and display.  
-- Authentication is done via an API key passed in the Authorization header.  
-- This pattern is the foundation for building chatbots, code assistants, and any application that needs natural‑language interaction.  
+Few‑shot prompting lets a language model learn a new task from only a handful of examples supplied in the prompt. By carefully structuring the prompt—defining the role, providing clear examples, and ending with an explicit instruction—you can achieve high accuracy without fine‑tuning. This technique works well for classification, extraction, and transformation tasks. The key is to keep examples concise, maintain consistent formatting, and use delimiters that the model can recognize. The approach is language‑agnostic and can be integrated into any application that can call the OpenAI API.
 
-Code example:  
-import os  
-import json  
-import requests  
+Code example (Python, using openai library):
+import os
+import openai
 
-# Load your OpenAI API key from an environment variable for security  
-api_key = os.getenv("OPENAI_API_KEY")  
+# Set your API key (replace with your own key or use environment variable)
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Define the endpoint and headers required by the API  
-url = "https://api.openai.com/v1/chat/completions"  
-headers = {  
-    "Content-Type": "application/json",  
-    "Authorization": f"Bearer {api_key}"  
-}  
+def classify_sentiment(text):
+    # Build a few‑shot prompt with two labeled examples and the new query
+    prompt = (
+        "You are a helpful assistant that classifies the sentiment of a sentence as Positive, Negative, or Neutral.\n\n"
+        "Example 1:\n"
+        "Sentence: I love the new phone I bought!\n"
+        "Sentiment: Positive\n\n"
+        "Example 2:\n"
+        "Sentence: The service was disappointing and slow.\n"
+        "Sentiment: Negative\n\n"
+        "Now classify the following sentence:\n"
+        f"Sentence: {text}\n"
+        "Sentiment:"
+    )
 
-# Build the message list: a system prompt + a user query  
-messages = [  
-    {"role": "system", "content": "You are a helpful programming assistant."},  
-    {"role": "user", "content": "Explain the difference between a list and a tuple in Python."}  
-]  
+    # Call the Chat Completion endpoint with a system message to enforce role
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a concise sentiment classifier."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.0,          # deterministic output for classification
+        max_tokens=10
+    )
 
-# Create the request payload specifying the model and messages  
-payload = {  
-    "model": "gpt-4o-mini",   # or any other available model name  
-    "messages": messages,  
-    "max_tokens": 300,        # limit the length of the response  
-    "temperature": 0.7        # control creativity  
-}  
+    # Extract and return the model's answer
+    sentiment = response.choices[0].message.content.strip()
+    return sentiment
 
-# Send the POST request to the API  
-response = requests.post(url, headers=headers, data=json.dumps(payload))  
-
-# Raise an exception if the request failed  
-response.raise_for_status()  
-
-# Parse the JSON response and extract the assistant’s reply  
-result = response.json()  
-assistant_reply = result["choices"][0]["message"]["content"]  
-
-print("Assistant:", assistant_reply)  
+# Example usage
+if __name__ == "__main__":
+    test_sentence = "The movie was okay, not great but not terrible."
+    print(f"Input: {test_sentence}")
+    print(f"Sentiment: {classify_sentiment(test_sentence)}")
 */
 
