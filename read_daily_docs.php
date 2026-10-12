@@ -1,256 +1,259 @@
 <?php
-// 2026-10-11 07:47:10
+// 2026-10-12 07:56:14
 
 /* PHP
-Topic: Using Traits to Share Methods Across Classes  
+PHP PDO Prepared Statements
 
-Explanation:  
-Traits allow you to compose reusable method implementations that can be inserted into multiple classes without using inheritance.  
-A trait is defined with the keyword trait and can contain properties, methods, and even abstract method declarations.  
-When a class uses a trait, the trait’s methods become part of that class as if they were defined directly inside it.  
-If two traits used in the same class define a method with the same name, you must resolve the conflict with the insteadof and as operators.  
-Traits are especially useful for adding common functionality (e.g., logging, serialization) to unrelated class hierarchies.  
+Explanation  
+Prepared statements in PDO separate the SQL query from its data, which protects against SQL injection attacks. The query is parsed and compiled by the database server once, and then executed multiple times with different parameter values. This approach also improves performance when the same statement runs repeatedly. PDO supports named and positional placeholders, giving flexibility in how parameters are bound. Using prepared statements is considered a best practice for any database interaction in PHP.
 
-Code example (with comments):  
-
+Code Example
 <?php
-// Define a trait that provides a simple logging capability
-trait LoggerTrait {
-    // Log a message with a timestamp
-    public function log(string $message): void {
-        $time = date('Y-m-d H:i:s');
-        echo "[{$time}] {$message}\n";
-    }
+// Create a new PDO instance (replace DSN, username, and password with your own values)
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Return rows as associative arrays
+];
+$pdo = new PDO($dsn, $username, $password, $options);
+
+// Define the SQL with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)';
+
+// Prepare the statement once
+$stmt = $pdo->prepare($sql);
+
+// Sample data to insert
+$data = [
+    ['username' => 'alice', 'email' => 'alice@example.com'],
+    ['username' => 'bob',   'email' => 'bob@example.com'],
+    ['username' => 'carol', 'email' => 'carol@example.com']
+];
+
+// Execute the prepared statement for each data row
+foreach ($data as $row) {
+    $stmt->execute([
+        ':username'   => $row['username'],
+        ':email'      => $row['email'],
+        ':created_at' => date('Y-m-d H:i:s') // current timestamp
+    ]);
+    echo "Inserted user: " . $row['username'] . PHP_EOL;
 }
-
-// Another trait that adds a unique identifier to a class
-trait IdTrait {
-    private static int $counter = 0;
-    private int $id;
-
-    // Initialize a unique ID when the object is created
-    public function initializeId(): void {
-        $this->id = ++self::$counter;
-    }
-
-    // Retrieve the object's ID
-    public function getId(): int {
-        return $this->id;
-    }
-}
-
-// A regular class that wants both logging and ID functionality
-class User {
-    use LoggerTrait, IdTrait; // Include both traits
-
-    private string $name;
-
-    public function __construct(string $name) {
-        $this->name = $name;
-        $this->initializeId();   // Method from IdTrait
-        $this->log("User '{$this->name}' created with ID {$this->getId()}"); // Method from LoggerTrait
-    }
-
-    public function getName(): string {
-        return $this->name;
-    }
-}
-
-// Usage
-$user1 = new User('Alice');
-$user2 = new User('Bob');
-$user1->log('Performing an action for user ' . $user1->getName());
-$user2->log('Performing an action for user ' . $user2->getName());
 ?>
 */
 
 /* Laravel
-Laravel Route Model Binding
+Laravel Service Container and Dependency Injection  
 
-Explanation:
-Route model binding automatically resolves Eloquent models based on route parameters, eliminating the need to manually query the database in controllers. When a route contains a parameter that matches a model's primary key, Laravel injects the corresponding model instance into the controller method. This feature works for both implicit binding (using conventional naming) and explicit binding (defining custom keys or logic). It improves code readability, reduces boilerplate, and ensures 404 responses when the model is not found. Customizing the binding is done in the RouteServiceProvider or directly on the route definition.
+The service container is the core of Laravel’s inversion of control (IoC) system.  
+It manages class dependencies and performs automatic resolution of objects.  
+By binding interfaces to concrete implementations you can swap out services without changing the consuming code.  
+Dependency injection allows you to type‑hint classes in constructors or controller methods, and the container will provide the required instances.  
+Using the container promotes loose coupling, easier testing, and cleaner architecture.  
 
-Code Example (implicit binding):
-<?php
-namespace App\Http\Controllers;
+Example – binding an interface and injecting it into a controller:  
 
-use App\Models\Post;
-use Illuminate\Http\Request;
+<?php  
 
-class PostController extends Controller
-{
-    // Laravel will automatically fetch the Post model where id equals the {post} segment
-    public function show(Post $post)
-    {
-        // $post is a fully hydrated Eloquent model instance
-        return view('posts.show', ['post' => $post]);
-    }
-}
+namespace App\Providers;  
 
-// routes/web.php
-use App\Http\Controllers\PostController;
-use Illuminate\Support\Facades\Route;
+use Illuminate\Support\ServiceProvider;  
+use App\Contracts\PaymentGateway;  
+use App\Services\StripeGateway;  
 
-// Define a route with a {post} placeholder; Laravel resolves it to a Post model
-Route::get('posts/{post}', [PostController::class, 'show']);
+class AppServiceProvider extends ServiceProvider  
+{  
+    public function register()  
+    {  
+        // Bind the PaymentGateway interface to the StripeGateway implementation  
+        $this->app->bind(PaymentGateway::class, StripeGateway::class);  
+    }  
+}  
 
-Code Example (explicit binding):
-<?php
-namespace App\Providers;
+---  
 
-use App\Models\User;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
+<?php  
 
-class RouteServiceProvider extends ServiceProvider
-{
-    public function boot()
-    {
-        // Explicitly bind the {user} parameter to the User model using the 'username' column
-        Route::bind('user', function ($value) {
-            return User::where('username', $value)->firstOrFail();
-        });
-    }
-}
+namespace App\Contracts;  
 
-// routes/web.php
-use App\Http\Controllers\UserController;
-use Illuminate\Support\Facades\Route;
+interface PaymentGateway  
+{  
+    public function charge(float $amount, string $currency);  
+}  
 
-// The {user} placeholder will be resolved via the custom binding above
-Route::get('profile/{user}', [UserController::class, 'show']);
+---  
 
-<?php
-namespace App\Http\Controllers;
+<?php  
 
-use App\Models\User;
+namespace App\Services;  
 
-class UserController extends Controller
-{
-    // $user is fetched by username instead of id
-    public function show(User $user)
-    {
-        return view('users.profile', compact('user'));
-    }
-}
+use App\Contracts\PaymentGateway;  
+
+class StripeGateway implements PaymentGateway  
+{  
+    public function charge(float $amount, string $currency)  
+    {  
+        // Here you would call Stripe's SDK to process the payment  
+        // This is a simplified placeholder for demonstration purposes  
+        return "Charged {$amount} {$currency} via Stripe.";  
+    }  
+}  
+
+---  
+
+<?php  
+
+namespace App\Http\Controllers;  
+
+use App\Contracts\PaymentGateway;  
+use Illuminate\Http\Request;  
+
+class OrderController extends Controller  
+{  
+    protected $paymentGateway;  
+
+    // Laravel automatically injects the concrete class bound to PaymentGateway  
+    public function __construct(PaymentGateway $paymentGateway)  
+    {  
+        $this->paymentGateway = $paymentGateway;  
+    }  
+
+    public function store(Request $request)  
+    {  
+        $amount = $request->input('amount');  
+        $currency = $request->input('currency', 'USD');  
+
+        // Use the injected payment service to process the charge  
+        $result = $this->paymentGateway->charge($amount, $currency);  
+
+        return response()->json(['message' => $result]);  
+    }  
+}  
+
+---  
+
+// In a test you can swap the implementation by re‑binding the interface  
+// $this->app->instance(PaymentGateway::class, new FakePaymentGateway());  
 */
 
 /* MySQL
 Topic: Common Table Expressions (CTEs) and Recursive Queries
 
-Explanation: 
-A Common Table Expression (CTE) is a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement. 
-CTEs improve readability by allowing you to break complex queries into logical building blocks. 
-Recursive CTEs enable hierarchical or tree‑like data to be traversed, such as organizational charts or category trees. 
-The WITH clause defines the CTE and can be self‑referencing for recursion, terminating when the anchor query returns no rows. 
-Recursive CTEs are evaluated repeatedly, each iteration feeding the result back into the CTE until the stop condition is met.
+Explanation:  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs improve readability by allowing you to break complex queries into logical building blocks. They are defined using the WITH clause and can be recursive, enabling you to traverse hierarchical data such as organization charts or category trees. Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself. MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.
 
-Code example with comments:
--- Define a recursive CTE to list an employee hierarchy
-WITH RECURSIVE employee_path AS (
-    -- Anchor member: start with the top‑level manager (no manager_id)
+Code Example (with comments):
+WITH RECURSIVE employee_hierarchy AS (
+    -- Anchor member: select the top‑level manager(s)
     SELECT 
         employee_id,
-        employee_name,
         manager_id,
-        CAST(employee_name AS CHAR(200)) AS path,
+        employee_name,
         1 AS level
     FROM employees
     WHERE manager_id IS NULL
-
+    
     UNION ALL
-
-    -- Recursive member: join each employee to their manager
+    
+    -- Recursive member: select employees reporting to the previous level
     SELECT 
         e.employee_id,
-        e.employee_name,
         e.manager_id,
-        CONCAT(ep.path, ' -> ', e.employee_name) AS path,
-        ep.level + 1 AS level
+        e.employee_name,
+        eh.level + 1 AS level
     FROM employees e
-    INNER JOIN employee_path ep ON e.manager_id = ep.employee_id
+    INNER JOIN employee_hierarchy eh
+        ON e.manager_id = eh.employee_id
 )
 SELECT 
     employee_id,
-    employee_name,
     manager_id,
-    path,
+    employee_name,
     level
-FROM employee_path
-ORDER BY path;
+FROM employee_hierarchy
+ORDER BY level, employee_id;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: Closures in JavaScript  
 
-Explanation:
-A closure is a function that retains access to its lexical scope even when the outer function has finished executing.  
-It allows inner functions to "remember" variables from the outer environment, enabling data privacy and encapsulation.  
-Closures are created each time a function is defined, capturing the current values of the surrounding variables.  
-They are widely used for creating factories, memoization, and handling asynchronous callbacks.  
-Understanding closures is essential for mastering JavaScript’s functional programming patterns.  
+Explanation:  
+A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context. This means the inner function can reference variables declared in the outer (enclosing) function even after the outer function has finished executing. Closures are created every time a function is defined, allowing for data privacy, partial application, and the creation of function factories. They are essential for implementing patterns such as module encapsulation and callbacks that need persistent state. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable variables across invocations.
 
-Code example with comments:
-function makeCounter() {
-    // 'count' is a private variable that lives in the outer function's scope
-    let count = 0;
+Code Example:  
+function makeCounter(initialValue) {            // outer function creates a private variable  
+    let count = initialValue;                  // this variable is captured by the inner function  
 
-    // The inner function forms a closure over 'count'
-    return function() {
-        // Each call increments the private 'count' variable
-        count++;
-        // Return the updated count value
-        return count;
-    };
-}
+    return function increment(step = 1) {      // the inner function forms a closure over 'count'  
+        count += step;                         // it can read and modify 'count' each call  
+        console.log(`Current count: ${count}`);  
+        return count;                          // returning the updated value (optional)  
+    };                                          // end of inner function  
 
-// Create a new counter instance; the closure captures its own 'count'
-const counter = makeCounter();
+}                                               // end of outer function  
 
-console.log(counter()); // Output: 1  (first call, count becomes 1)
-console.log(counter()); // Output: 2  (second call, count becomes 2)
-console.log(counter()); // Output: 3  (third call, count becomes 3)
+// Using the closure  
+const counterA = makeCounter(0);   // each call to makeCounter returns a new independent closure  
+counterA();        // Current count: 1  
+counterA(5);       // Current count: 6  
+
+const counterB = makeCounter(10);  // separate closure with its own private 'count'  
+counterB();        // Current count: 11  
+counterB(2);       // Current count: 13  
+
+// The 'count' variable inside each closure is not accessible from the global scope, providing encapsulation.
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Few‑Shot Prompt Engineering for Large Language Models  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small number of example input‑output pairs inside the prompt, guiding it toward the desired behavior without fine‑tuning. This technique works well for tasks like classification, data extraction, or formatting where a full dataset is unavailable. By structuring the prompt as a series of messages—system instructions, example user‑assistant turns, then the new user query—you can steer the model to produce consistent, high‑quality responses. The approach is lightweight, requires only an API call, and can be adapted on the fly for different tasks. It also helps control model hallucinations by anchoring its output to concrete examples.
+Few‑shot prompting provides the model with a small number of example input‑output pairs directly in the prompt, guiding it toward the desired behavior without any model weight changes. This technique is especially useful when you need consistent formatting, domain‑specific terminology, or a custom response style. By carefully selecting representative examples, the model can generalize to new queries that follow the same pattern. The approach works with any API that accepts a text prompt, such as OpenAI’s ChatCompletion or Azure OpenAI. It is quick to iterate on, requires no additional training data, and can be combined with system messages for even stronger control.  
 
-Code example (Python, using the openai library):  
+Code example (Python, using OpenAI’s ChatCompletion API):  
 
-import os  
-import openai  
+import os
+import openai
 
-# Load your API key from an environment variable or secret manager  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Set your API key – replace with your own or use environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def classify_sentiment(text: str) -> str:  
-    # Build a few‑shot prompt with two labeled examples  
-    messages = [  
-        {"role": "system", "content": "You are a helpful assistant that classifies the sentiment of short sentences as Positive, Negative, or Neutral."},  
-        {"role": "user", "content": "I love the new design of this app!"},  
-        {"role": "assistant", "content": "Positive"},  
-        {"role": "user", "content": "The update caused many bugs and crashes."},  
-        {"role": "assistant", "content": "Negative"},  
-        # New query to classify  
-        {"role": "user", "content": text}  
-    ]  
+# Define a few‑shot prompt with two example Q&A pairs
+few_shot_prompt = """You are a helpful assistant that formats travel itineraries in bullet points.
 
-    # Call the Chat Completion endpoint  
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",  # choose a suitable model  
-        messages=messages,  
-        temperature=0.0  # deterministic output for classification  
-    )  
+User: I want a 3‑day trip to Kyoto, focusing on historic temples.
+Assistant:
+- Day 1: Kinkaku‑ji (Golden Pavilion), Ryoan‑ji Zen garden, Nishiki Market
+- Day 2: Fushimi Inari Taisha, Tofuku‑ji, Gion district evening stroll
+- Day 3: Kiyomizu‑dera, Higashiyama district, tea ceremony experience
 
-    # Extract the assistant's reply, stripped of whitespace  
-    sentiment = response.choices[0].message.content.strip()  
-    return sentiment  
+User: Plan a weekend in Barcelona with a mix of architecture and food.
+Assistant:
+- Day 1: Sagrada Família, Park Güell, tapas crawl in El Born
+- Day 2: Casa Batlló, La Rambla, paella dinner by the beach
 
-# Example usage  
-sample = "The tutorial was clear but a bit too long."  
-print(f"Sentiment: {classify_sentiment(sample)}")  
+User: {user_query}
+Assistant:"""
+
+def get_itinerary(user_query: str) -> str:
+    # Insert the actual user query into the prompt template
+    prompt = few_shot_prompt.format(user_query=user_query)
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",          # choose a suitable model
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,              # low temperature for deterministic output
+        max_tokens=300,
+    )
+    # Extract the assistant's reply text
+    return response.choices[0].message.content.strip()
+
+# Example usage
+if __name__ == "__main__":
+    query = "Create a 5‑day itinerary for a nature‑focused trip to Patagonia, including hiking and wildlife spotting."
+    itinerary = get_itinerary(query)
+    print(itinerary)
 */
 
