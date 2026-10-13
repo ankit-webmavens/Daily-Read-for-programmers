@@ -1,259 +1,309 @@
 <?php
-// 2026-10-12 07:56:14
+// 2026-10-13 08:21:17
 
 /* PHP
-PHP PDO Prepared Statements
+PHP Topic: Generators and the yield keyword  
 
-Explanation  
-Prepared statements in PDO separate the SQL query from its data, which protects against SQL injection attacks. The query is parsed and compiled by the database server once, and then executed multiple times with different parameter values. This approach also improves performance when the same statement runs repeatedly. PDO supports named and positional placeholders, giving flexibility in how parameters are bound. Using prepared statements is considered a best practice for any database interaction in PHP.
+Explanation:  
+Generators allow you to create iterators without building an entire array in memory.  
+When a function contains the yield statement, PHP returns a Generator object that produces values on demand.  
+Each call to yield pauses the function, preserving its local state until the next value is requested.  
+This approach is memory‑efficient for processing large data sets, streams, or infinite sequences.  
+Generators can also receive values sent from the caller using the send() method, enabling two‑way communication.
 
-Code Example
+Code example (with comments):
+
 <?php
-// Create a new PDO instance (replace DSN, username, and password with your own values)
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Return rows as associative arrays
-];
-$pdo = new PDO($dsn, $username, $password, $options);
-
-// Define the SQL with named placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)';
-
-// Prepare the statement once
-$stmt = $pdo->prepare($sql);
-
-// Sample data to insert
-$data = [
-    ['username' => 'alice', 'email' => 'alice@example.com'],
-    ['username' => 'bob',   'email' => 'bob@example.com'],
-    ['username' => 'carol', 'email' => 'carol@example.com']
-];
-
-// Execute the prepared statement for each data row
-foreach ($data as $row) {
-    $stmt->execute([
-        ':username'   => $row['username'],
-        ':email'      => $row['email'],
-        ':created_at' => date('Y-m-d H:i:s') // current timestamp
-    ]);
-    echo "Inserted user: " . $row['username'] . PHP_EOL;
+// A generator function that yields the squares of numbers from 1 to $limit
+function squareNumbers(int $limit): Generator
+{
+    for ($i = 1; $i <= $limit; $i++) {
+        // yield returns the current square and pauses execution
+        yield $i => $i * $i;
+    }
 }
+
+// Using the generator
+$limit = 5;
+$squares = squareNumbers($limit);
+
+foreach ($squares as $number => $square) {
+    // Each iteration fetches the next value without loading all results at once
+    echo "The square of $number is $square\n";
+}
+
+// Demonstrating two‑way communication with send()
+function counter(): Generator
+{
+    $i = 0;
+    while (true) {
+        // Yield the current count and wait for a value to be sent back
+        $reset = yield $i++;
+        // If a non‑null value is sent, reset the counter
+        if ($reset !== null) {
+            $i = (int)$reset;
+        }
+    }
+}
+
+$gen = counter();
+echo $gen->current() . "\n"; // 0
+$gen->next();               // advance to 1
+echo $gen->current() . "\n"; // 1
+$gen->send(10);             // reset counter to 10
+echo $gen->current() . "\n"; // 10
 ?>
 */
 
 /* Laravel
-Laravel Service Container and Dependency Injection  
+Topic: Laravel Eloquent Polymorphic Many‑to‑Many Relationships
 
-The service container is the core of Laravel’s inversion of control (IoC) system.  
-It manages class dependencies and performs automatic resolution of objects.  
-By binding interfaces to concrete implementations you can swap out services without changing the consuming code.  
-Dependency injection allows you to type‑hint classes in constructors or controller methods, and the container will provide the required instances.  
-Using the container promotes loose coupling, easier testing, and cleaner architecture.  
+Explanation:
+- Polymorphic many‑to‑many allows a model to belong to more than one other model on a single association table.  
+- Common use cases include tagging systems where posts, videos, and products can share tags.  
+- The pivot table stores the related model type and its identifier, enabling flexible queries.  
+- Defining the relationship requires a morphToMany method on the related models and a morphedByMany on the tag model.  
+- Laravel automatically resolves the correct model class when retrieving or attaching records.
 
-Example – binding an interface and injecting it into a controller:  
+Code Example (Tag, Post, and Video models with migration and usage):
 
-<?php  
+// migration for tags table
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 
-namespace App\Providers;  
+class CreateTagsTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('tags', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->unique();
+            $table->timestamps();
+        });
+    }
 
-use Illuminate\Support\ServiceProvider;  
-use App\Contracts\PaymentGateway;  
-use App\Services\StripeGateway;  
+    public function down()
+    {
+        Schema::dropIfExists('tags');
+    }
+}
 
-class AppServiceProvider extends ServiceProvider  
-{  
-    public function register()  
-    {  
-        // Bind the PaymentGateway interface to the StripeGateway implementation  
-        $this->app->bind(PaymentGateway::class, StripeGateway::class);  
-    }  
-}  
+// migration for taggables pivot table
+class CreateTaggablesTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('taggables', function (Blueprint $table) {
+            $table->foreignId('tag_id')->constrained()->onDelete('cascade');
+            $table->unsignedBigInteger('taggable_id');
+            $table->string('taggable_type');
+            $table->primary(['tag_id', 'taggable_id', 'taggable_type']);
+        });
+    }
 
----  
+    public function down()
+    {
+        Schema::dropIfExists('taggables');
+    }
+}
 
-<?php  
+// Tag model
+namespace App\Models;
+use Illuminate\Database\Eloquent\Model;
 
-namespace App\Contracts;  
+class Tag extends Model
+{
+    protected $fillable = ['name'];
 
-interface PaymentGateway  
-{  
-    public function charge(float $amount, string $currency);  
-}  
+    // A tag can belong to many different models
+    public function posts()
+    {
+        return $this->morphedByMany(Post::class, 'taggable');
+    }
 
----  
+    public function videos()
+    {
+        return $this->morphedByMany(Video::class, 'taggable');
+    }
+}
 
-<?php  
+// Post model
+namespace App\Models;
+use Illuminate\Database\Eloquent\Model;
 
-namespace App\Services;  
+class Post extends Model
+{
+    protected $fillable = ['title', 'content'];
 
-use App\Contracts\PaymentGateway;  
+    // A post can have many tags
+    public function tags()
+    {
+        return $this->morphToMany(Tag::class, 'taggable');
+    }
+}
 
-class StripeGateway implements PaymentGateway  
-{  
-    public function charge(float $amount, string $currency)  
-    {  
-        // Here you would call Stripe's SDK to process the payment  
-        // This is a simplified placeholder for demonstration purposes  
-        return "Charged {$amount} {$currency} via Stripe.";  
-    }  
-}  
+// Video model
+namespace App\Models;
+use Illuminate\Database\Eloquent\Model;
 
----  
+class Video extends Model
+{
+    protected $fillable = ['title', 'url'];
 
-<?php  
+    // A video can have many tags
+    public function tags()
+    {
+        return $this->morphToMany(Tag::class, 'taggable');
+    }
+}
 
-namespace App\Http\Controllers;  
+// Using the relationship in a controller or tinker
+use App\Models\Post;
+use App\Models\Video;
+use App\Models\Tag;
 
-use App\Contracts\PaymentGateway;  
-use Illuminate\Http\Request;  
+// Create tags
+$phpTag   = Tag::create(['name' => 'PHP']);
+$laravelTag = Tag::create(['name' => 'Laravel']);
 
-class OrderController extends Controller  
-{  
-    protected $paymentGateway;  
+// Create a post and attach tags
+$post = Post::create(['title' => 'Laravel Polymorphism', 'content' => '...']);
+$post->tags()->attach($phpTag->id);
+$post->tags()->attach($laravelTag->id);
 
-    // Laravel automatically injects the concrete class bound to PaymentGateway  
-    public function __construct(PaymentGateway $paymentGateway)  
-    {  
-        $this->paymentGateway = $paymentGateway;  
-    }  
+// Create a video and attach a tag
+$video = Video::create(['title' => 'Eloquent Tutorial', 'url' => 'https://example.com/video']);
+$video->tags()->attach($laravelTag->id);
 
-    public function store(Request $request)  
-    {  
-        $amount = $request->input('amount');  
-        $currency = $request->input('currency', 'USD');  
+// Retrieve tags for a post
+$postTags = $post->tags; // collection of Tag models
 
-        // Use the injected payment service to process the charge  
-        $result = $this->paymentGateway->charge($amount, $currency);  
-
-        return response()->json(['message' => $result]);  
-    }  
-}  
-
----  
-
-// In a test you can swap the implementation by re‑binding the interface  
-// $this->app->instance(PaymentGateway::class, new FakePaymentGateway());  
+// Retrieve all posts that have the "Laravel" tag
+$laravelPosts = Tag::where('name', 'Laravel')->first()->posts;
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries
+Topic: Common Table Expressions (CTE) in MySQL
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs improve readability by allowing you to break complex queries into logical building blocks. They are defined using the WITH clause and can be recursive, enabling you to traverse hierarchical data such as organization charts or category trees. Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself. MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs improve readability by allowing you to break complex queries into logical sub‑queries written at the top of the statement.  
+MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.  
+Non‑recursive CTEs are useful for simplifying joins, aggregations, or window functions.  
+Recursive CTEs enable hierarchical queries such as traversing organization charts or tree structures.  
 
-Code Example (with comments):
-WITH RECURSIVE employee_hierarchy AS (
-    -- Anchor member: select the top‑level manager(s)
-    SELECT 
-        employee_id,
-        manager_id,
-        employee_name,
-        1 AS level
-    FROM employees
-    WHERE manager_id IS NULL
-    
-    UNION ALL
-    
-    -- Recursive member: select employees reporting to the previous level
-    SELECT 
-        e.employee_id,
-        e.manager_id,
-        e.employee_name,
-        eh.level + 1 AS level
-    FROM employees e
-    INNER JOIN employee_hierarchy eh
-        ON e.manager_id = eh.employee_id
+Code example (non‑recursive CTE with comments):
+
+-- Define a CTE named recent_sales that selects sales from the last 30 days
+WITH recent_sales AS (
+    SELECT
+        sale_id,
+        customer_id,
+        sale_amount,
+        sale_date
+    FROM
+        sales
+    WHERE
+        sale_date >= CURDATE() - INTERVAL 30 DAY
 )
-SELECT 
-    employee_id,
-    manager_id,
-    employee_name,
-    level
-FROM employee_hierarchy
-ORDER BY level, employee_id;
+
+-- Main query uses the CTE to calculate total sales per customer
+SELECT
+    c.customer_name,
+    COUNT(r.sale_id) AS total_transactions,
+    SUM(r.sale_amount) AS total_spent
+FROM
+    recent_sales r
+JOIN
+    customers c ON r.customer_id = c.customer_id
+GROUP BY
+    c.customer_name
+ORDER BY
+    total_spent DESC
+LIMIT 10;   -- show top 10 customers by spending in the last month.
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: Closures in JavaScript
 
 Explanation:  
-A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context. This means the inner function can reference variables declared in the outer (enclosing) function even after the outer function has finished executing. Closures are created every time a function is defined, allowing for data privacy, partial application, and the creation of function factories. They are essential for implementing patterns such as module encapsulation and callbacks that need persistent state. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable variables across invocations.
+A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context. This means the inner function can reference variables declared in the outer function after the outer function has finished running. Closures are created every time a function is defined, allowing private data encapsulation and function factories. They are essential for patterns such as memoization, currying, and module creation. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state between calls.
 
-Code Example:  
-function makeCounter(initialValue) {            // outer function creates a private variable  
-    let count = initialValue;                  // this variable is captured by the inner function  
+Code example with comments:
+function makeCounter(initialValue) {
+    // The variable count is local to makeCounter but will be kept alive by the inner function
+    let count = initialValue;
+    
+    // The returned function forms a closure over the variable count
+    return function () {
+        // Each call increments and returns the current count
+        count += 1;
+        return count;
+    };
+}
 
-    return function increment(step = 1) {      // the inner function forms a closure over 'count'  
-        count += step;                         // it can read and modify 'count' each call  
-        console.log(`Current count: ${count}`);  
-        return count;                          // returning the updated value (optional)  
-    };                                          // end of inner function  
+// Create a new counter starting at 10
+const counter = makeCounter(10);
 
-}                                               // end of outer function  
+// Subsequent calls remember the updated count value
+console.log(counter()); // 11
+console.log(counter()); // 12
+console.log(counter()); // 13
 
-// Using the closure  
-const counterA = makeCounter(0);   // each call to makeCounter returns a new independent closure  
-counterA();        // Current count: 1  
-counterA(5);       // Current count: 6  
-
-const counterB = makeCounter(10);  // separate closure with its own private 'count'  
-counterB();        // Current count: 11  
-counterB(2);       // Current count: 13  
-
-// The 'count' variable inside each closure is not accessible from the global scope, providing encapsulation.
+// A second counter has its own independent closure
+const anotherCounter = makeCounter(100);
+console.log(anotherCounter()); // 101
+console.log(counter()); // 14 (original counter continues where it left off)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering for Large Language Models  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting provides the model with a small number of example input‑output pairs directly in the prompt, guiding it toward the desired behavior without any model weight changes. This technique is especially useful when you need consistent formatting, domain‑specific terminology, or a custom response style. By carefully selecting representative examples, the model can generalize to new queries that follow the same pattern. The approach works with any API that accepts a text prompt, such as OpenAI’s ChatCompletion or Azure OpenAI. It is quick to iterate on, requires no additional training data, and can be combined with system messages for even stronger control.  
+Few‑shot prompting lets you guide a large language model to perform a new task by providing a handful of labeled examples inside the prompt. The model infers the pattern and applies it to unseen inputs, reducing the need for large training datasets. By carefully formatting the examples and using clear separators, you improve consistency and accuracy. This technique works well for classification, extraction, or transformation tasks. The example below shows how to classify user intent with three demonstration pairs and then query the model for a new utterance.
 
-Code example (Python, using OpenAI’s ChatCompletion API):  
-
+Code example (Python, requires openai package, API key set in environment):
 import os
 import openai
 
-# Set your API key – replace with your own or use environment variable
+# Load API key from environment variable (OPENAI_API_KEY)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Define a few‑shot prompt with two example Q&A pairs
-few_shot_prompt = """You are a helpful assistant that formats travel itineraries in bullet points.
+def classify_intent(user_message: str) -> str:
+    """
+    Sends a few‑shot prompt to the Chat Completion endpoint.
+    Returns the model’s predicted intent label.
+    """
+    # Few‑shot examples: each line shows an input and the expected label.
+    examples = [
+        ("I want to cancel my subscription", "Cancel Subscription"),
+        ("How do I reset my password?", "Password Reset"),
+        ("What are your pricing plans?", "Pricing Inquiry")
+    ]
 
-User: I want a 3‑day trip to Kyoto, focusing on historic temples.
-Assistant:
-- Day 1: Kinkaku‑ji (Golden Pavilion), Ryoan‑ji Zen garden, Nishiki Market
-- Day 2: Fushimi Inari Taisha, Tofuku‑ji, Gion district evening stroll
-- Day 3: Kiyomizu‑dera, Higashiyama district, tea ceremony experience
+    # Build the prompt with a clear instruction and the examples.
+    prompt = "Classify the user intent of the following messages. Respond with only the intent label.\n\n"
+    for inp, label in examples:
+        prompt += f"Message: {inp}\nIntent: {label}\n\n"
+    # Add the new message we want classified.
+    prompt += f"Message: {user_message}\nIntent:"
 
-User: Plan a weekend in Barcelona with a mix of architecture and food.
-Assistant:
-- Day 1: Sagrada Família, Park Güell, tapas crawl in El Born
-- Day 2: Casa Batlló, La Rambla, paella dinner by the beach
-
-User: {user_query}
-Assistant:"""
-
-def get_itinerary(user_query: str) -> str:
-    # Insert the actual user query into the prompt template
-    prompt = few_shot_prompt.format(user_query=user_query)
-
+    # Call the Chat Completion API (using the gpt-3.5-turbo model).
     response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",          # choose a suitable model
+        model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,              # low temperature for deterministic output
-        max_tokens=300,
+        temperature=0.0,               # deterministic output
+        max_tokens=20,                 # short answer
     )
-    # Extract the assistant's reply text
+
+    # Extract and return the label text (strip whitespace and newlines).
     return response.choices[0].message.content.strip()
 
 # Example usage
 if __name__ == "__main__":
-    query = "Create a 5‑day itinerary for a nature‑focused trip to Patagonia, including hiking and wildlife spotting."
-    itinerary = get_itinerary(query)
-    print(itinerary)
+    test_message = "Can you tell me how to change my billing address?"
+    intent = classify_intent(test_message)
+    print(f"Predicted intent: {intent}")
 */
 
