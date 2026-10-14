@@ -1,309 +1,270 @@
 <?php
-// 2026-10-13 08:21:17
+// 2026-10-14 06:38:24
 
 /* PHP
-PHP Topic: Generators and the yield keyword  
+Topic: Using PHP PDO (PHP Data Objects) for Secure Database Access
 
-Explanation:  
-Generators allow you to create iterators without building an entire array in memory.  
-When a function contains the yield statement, PHP returns a Generator object that produces values on demand.  
-Each call to yield pauses the function, preserving its local state until the next value is requested.  
-This approach is memory‑efficient for processing large data sets, streams, or infinite sequences.  
-Generators can also receive values sent from the caller using the send() method, enabling two‑way communication.
+Explanation:
+- PDO provides a consistent interface for accessing many different databases (MySQL, PostgreSQL, SQLite, etc.) from PHP.
+- It supports prepared statements, which protect against SQL injection by separating query structure from data.
+- PDO throws exceptions on errors, allowing you to handle failures cleanly with try‑catch blocks.
+- You can fetch results as associative arrays, objects, or even bind them directly to variables.
+- Connection parameters are supplied as a DSN string, making it easy to switch databases without rewriting code.
 
-Code example (with comments):
+Code example (MySQL connection, inserting a row, and retrieving data):
 
 <?php
-// A generator function that yields the squares of numbers from 1 to $limit
-function squareNumbers(int $limit): Generator
-{
-    for ($i = 1; $i <= $limit; $i++) {
-        // yield returns the current square and pauses execution
-        yield $i => $i * $i;
+// Enable error reporting for PDO
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,   // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch results as associative arrays
+    PDO::ATTR_EMULATE_PREPARES => false,           // Use native prepared statements
+];
+
+$host = 'localhost';
+$db   = 'sample_db';
+$user = 'db_user';
+$pass = 'db_password';
+$charset = 'utf8mb4';
+
+// Build DSN string
+$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+
+try {
+    // Create PDO instance
+    $pdo = new PDO($dsn, $user, $pass, $options);
+
+    // INSERT using a prepared statement
+    $insertSql = "INSERT INTO users (username, email) VALUES (:username, :email)";
+    $stmt = $pdo->prepare($insertSql);
+    $stmt->execute([
+        ':username' => 'alice',
+        ':email'    => 'alice@example.com'
+    ]);
+
+    // SELECT using a prepared statement
+    $selectSql = "SELECT id, username, email FROM users WHERE username = :username";
+    $stmt = $pdo->prepare($selectSql);
+    $stmt->execute([':username' => 'alice']);
+
+    // Fetch the result
+    $user = $stmt->fetch();
+
+    if ($user) {
+        echo "User ID: {$user['id']}\n";
+        echo "Username: {$user['username']}\n";
+        echo "Email: {$user['email']}\n";
+    } else {
+        echo "No user found.\n";
     }
+} catch (PDOException $e) {
+    // Handle connection or query errors
+    echo "Database error: " . $e->getMessage();
 }
-
-// Using the generator
-$limit = 5;
-$squares = squareNumbers($limit);
-
-foreach ($squares as $number => $square) {
-    // Each iteration fetches the next value without loading all results at once
-    echo "The square of $number is $square\n";
-}
-
-// Demonstrating two‑way communication with send()
-function counter(): Generator
-{
-    $i = 0;
-    while (true) {
-        // Yield the current count and wait for a value to be sent back
-        $reset = yield $i++;
-        // If a non‑null value is sent, reset the counter
-        if ($reset !== null) {
-            $i = (int)$reset;
-        }
-    }
-}
-
-$gen = counter();
-echo $gen->current() . "\n"; // 0
-$gen->next();               // advance to 1
-echo $gen->current() . "\n"; // 1
-$gen->send(10);             // reset counter to 10
-echo $gen->current() . "\n"; // 10
 ?>
 */
 
 /* Laravel
-Topic: Laravel Eloquent Polymorphic Many‑to‑Many Relationships
+Topic: Laravel Service Container and Dependency Injection
 
 Explanation:
-- Polymorphic many‑to‑many allows a model to belong to more than one other model on a single association table.  
-- Common use cases include tagging systems where posts, videos, and products can share tags.  
-- The pivot table stores the related model type and its identifier, enabling flexible queries.  
-- Defining the relationship requires a morphToMany method on the related models and a morphedByMany on the tag model.  
-- Laravel automatically resolves the correct model class when retrieving or attaching records.
+The Laravel Service Container is a powerful tool that manages class dependencies and performs automatic injection. It resolves objects by reading type hints in constructors or method signatures, allowing you to decouple code and facilitate testing. You can bind interfaces to concrete classes, define singleton instances, or use contextual bindings for different implementations in various parts of the app. By leveraging the container, you keep controllers thin and push business logic into dedicated services. This pattern also makes it easy to swap implementations without changing the consuming code.
 
-Code Example (Tag, Post, and Video models with migration and usage):
-
-// migration for tags table
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-
-class CreateTagsTable extends Migration
+Code example (app/Providers/AppServiceProvider.php):
+public function register()
 {
-    public function up()
+    // Bind an interface to a concrete class
+    $this->app->bind(
+        App\Contracts\PaymentGateway::class,
+        App\Services\StripePaymentGateway::class
+    );
+
+    // Register a singleton instance (same object throughout the request lifecycle)
+    $this->app->singleton('logger', function ($app) {
+        return new Monolog\Logger('app', [
+            new Monolog\Handler\StreamHandler(storage_path('logs/app.log'))
+        ]);
+    });
+}
+
+// Usage in a controller (app/Http/Controllers/OrderController.php):
+use App\Contracts\PaymentGateway;
+
+class OrderController extends Controller
+{
+    protected $gateway;
+
+    // The container automatically injects the concrete StripePaymentGateway
+    public function __construct(PaymentGateway $gateway)
     {
-        Schema::create('tags', function (Blueprint $table) {
-            $table->id();
-            $table->string('name')->unique();
-            $table->timestamps();
-        });
+        $this->gateway = $gateway;
     }
 
-    public function down()
+    public function store(Request $request)
     {
-        Schema::dropIfExists('tags');
+        // Use the injected payment gateway
+        $this->gateway->charge($request->input('amount'));
+
+        // Access the singleton logger via the container helper
+        $logger = app('logger');
+        $logger->info('Order placed', $request->all());
+
+        return response()->json(['status' => 'success']);
     }
 }
 
-// migration for taggables pivot table
-class CreateTaggablesTable extends Migration
-{
-    public function up()
-    {
-        Schema::create('taggables', function (Blueprint $table) {
-            $table->foreignId('tag_id')->constrained()->onDelete('cascade');
-            $table->unsignedBigInteger('taggable_id');
-            $table->string('taggable_type');
-            $table->primary(['tag_id', 'taggable_id', 'taggable_type']);
-        });
-    }
+// Interface definition (app/Contracts/PaymentGateway.php):
+namespace App\Contracts;
 
-    public function down()
-    {
-        Schema::dropIfExists('taggables');
-    }
+interface PaymentGateway
+{
+    public function charge(float $amount);
 }
 
-// Tag model
-namespace App\Models;
-use Illuminate\Database\Eloquent\Model;
+// Concrete implementation (app/Services/StripePaymentGateway.php):
+namespace App\Services;
 
-class Tag extends Model
+use App\Contracts\PaymentGateway;
+use Stripe\StripeClient;
+
+class StripePaymentGateway implements PaymentGateway
 {
-    protected $fillable = ['name'];
+    protected $stripe;
 
-    // A tag can belong to many different models
-    public function posts()
+    public function __construct()
     {
-        return $this->morphedByMany(Post::class, 'taggable');
+        // Initialize Stripe client with API key from config
+        $this->stripe = new StripeClient(config('services.stripe.secret'));
     }
 
-    public function videos()
+    public function charge(float $amount)
     {
-        return $this->morphedByMany(Video::class, 'taggable');
+        // Example charge request to Stripe
+        $this->stripe->charges->create([
+            'amount' => $amount * 100, // amount in cents
+            'currency' => 'usd',
+            'source' => 'tok_visa', // placeholder token
+            'description' => 'Laravel Charge',
+        ]);
     }
 }
-
-// Post model
-namespace App\Models;
-use Illuminate\Database\Eloquent\Model;
-
-class Post extends Model
-{
-    protected $fillable = ['title', 'content'];
-
-    // A post can have many tags
-    public function tags()
-    {
-        return $this->morphToMany(Tag::class, 'taggable');
-    }
-}
-
-// Video model
-namespace App\Models;
-use Illuminate\Database\Eloquent\Model;
-
-class Video extends Model
-{
-    protected $fillable = ['title', 'url'];
-
-    // A video can have many tags
-    public function tags()
-    {
-        return $this->morphToMany(Tag::class, 'taggable');
-    }
-}
-
-// Using the relationship in a controller or tinker
-use App\Models\Post;
-use App\Models\Video;
-use App\Models\Tag;
-
-// Create tags
-$phpTag   = Tag::create(['name' => 'PHP']);
-$laravelTag = Tag::create(['name' => 'Laravel']);
-
-// Create a post and attach tags
-$post = Post::create(['title' => 'Laravel Polymorphism', 'content' => '...']);
-$post->tags()->attach($phpTag->id);
-$post->tags()->attach($laravelTag->id);
-
-// Create a video and attach a tag
-$video = Video::create(['title' => 'Eloquent Tutorial', 'url' => 'https://example.com/video']);
-$video->tags()->attach($laravelTag->id);
-
-// Retrieve tags for a post
-$postTags = $post->tags; // collection of Tag models
-
-// Retrieve all posts that have the "Laravel" tag
-$laravelPosts = Tag::where('name', 'Laravel')->first()->posts;
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) in MySQL
+Topic: Common Table Expressions (CTEs) in MySQL  
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs improve readability by allowing you to break complex queries into logical sub‑queries written at the top of the statement.  
-MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.  
-Non‑recursive CTEs are useful for simplifying joins, aggregations, or window functions.  
-Recursive CTEs enable hierarchical queries such as traversing organization charts or tree structures.  
+A Common Table Expression (CTE) is a temporary named result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+MySQL supports both non‑recursive and recursive CTEs starting from version 8.0, enabling more readable queries and hierarchical data processing.  
+CTEs are defined using the WITH clause and exist only for the duration of the statement that follows it.  
+They can simplify complex subqueries, improve maintainability, and allow you to reference the same derived set multiple times without repeating the logic.  
+Recursive CTEs are particularly useful for traversing tree structures such as organizational charts or category hierarchies.  
 
-Code example (non‑recursive CTE with comments):
+Code example (with inline comments):  
+WITH RECURSIVE employee_hierarchy AS (  
+    -- Anchor member: select the top‑level manager(s)  
+    SELECT employee_id, manager_id, employee_name, 1 AS level  
+    FROM employees  
+    WHERE manager_id IS NULL  
 
--- Define a CTE named recent_sales that selects sales from the last 30 days
-WITH recent_sales AS (
-    SELECT
-        sale_id,
-        customer_id,
-        sale_amount,
-        sale_date
-    FROM
-        sales
-    WHERE
-        sale_date >= CURDATE() - INTERVAL 30 DAY
-)
+    UNION ALL  
 
--- Main query uses the CTE to calculate total sales per customer
-SELECT
-    c.customer_name,
-    COUNT(r.sale_id) AS total_transactions,
-    SUM(r.sale_amount) AS total_spent
-FROM
-    recent_sales r
-JOIN
-    customers c ON r.customer_id = c.customer_id
-GROUP BY
-    c.customer_name
-ORDER BY
-    total_spent DESC
-LIMIT 10;   -- show top 10 customers by spending in the last month.
+    -- Recursive member: find subordinates of the previous level  
+    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1  
+    FROM employees e  
+    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id  
+)  
+-- Final query: retrieve the hierarchy ordered by level and employee name  
+SELECT employee_id, manager_id, employee_name, level  
+FROM employee_hierarchy  
+ORDER BY level, employee_name;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: Event Delegation in the DOM
 
-Explanation:  
-A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context. This means the inner function can reference variables declared in the outer function after the outer function has finished running. Closures are created every time a function is defined, allowing private data encapsulation and function factories. They are essential for patterns such as memoization, currying, and module creation. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state between calls.
+Explanation:
+Event delegation is a technique where a single event listener is attached to a parent element to handle events fired by its child elements. This reduces the number of listeners, improves performance, and works for dynamically added elements. The listener uses the event object's target property to determine which child triggered the event. It is especially useful for lists, tables, or any container with many interactive children. By leveraging bubbling, you can centralize logic and keep your code cleaner.
 
 Code example with comments:
-function makeCounter(initialValue) {
-    // The variable count is local to makeCounter but will be kept alive by the inner function
-    let count = initialValue;
+// HTML structure (for reference)
+// <ul id="menu">
+//   <li data-action="new">New File</li>
+//   <li data-action="open">Open File</li>
+//   <li data-action="save">Save File</li>
+// </ul>
+
+// JavaScript
+const menu = document.getElementById('menu');
+
+// Attach one click listener to the parent <ul>
+menu.addEventListener('click', function(event) {
+  // Determine the actual element that was clicked
+  const clickedItem = event.target;
+  
+  // Ensure the click originated from a <li> (ignore clicks on the <ul> itself)
+  if (clickedItem.tagName.toLowerCase() === 'li') {
+    const action = clickedItem.getAttribute('data-action');
     
-    // The returned function forms a closure over the variable count
-    return function () {
-        // Each call increments and returns the current count
-        count += 1;
-        return count;
-    };
-}
-
-// Create a new counter starting at 10
-const counter = makeCounter(10);
-
-// Subsequent calls remember the updated count value
-console.log(counter()); // 11
-console.log(counter()); // 12
-console.log(counter()); // 13
-
-// A second counter has its own independent closure
-const anotherCounter = makeCounter(100);
-console.log(anotherCounter()); // 101
-console.log(counter()); // 14 (original counter continues where it left off)
+    // Perform the appropriate action based on the data-action value
+    switch (action) {
+      case 'new':
+        console.log('Creating a new file...');
+        break;
+      case 'open':
+        console.log('Opening an existing file...');
+        break;
+      case 'save':
+        console.log('Saving the current file...');
+        break;
+      default:
+        console.log('Unknown action:', action);
+    }
+  }
+});
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Chain‑of‑Thought Prompting for Large Language Models  
 
 Explanation:  
-Few‑shot prompting lets you guide a large language model to perform a new task by providing a handful of labeled examples inside the prompt. The model infers the pattern and applies it to unseen inputs, reducing the need for large training datasets. By carefully formatting the examples and using clear separators, you improve consistency and accuracy. This technique works well for classification, extraction, or transformation tasks. The example below shows how to classify user intent with three demonstration pairs and then query the model for a new utterance.
+Chain‑of‑Thought (CoT) prompting encourages a language model to generate step‑by‑step reasoning before giving a final answer. This technique improves performance on complex tasks such as math word problems, logical puzzles, and multi‑hop reasoning. By explicitly asking the model to “think aloud,” you can extract intermediate computations that guide the final output. CoT works best when the prompt provides a clear template that the model can follow consistently. It can be combined with temperature settings to balance creativity and deterministic reasoning.
 
-Code example (Python, requires openai package, API key set in environment):
-import os
-import openai
+Code example (Python, using OpenAI’s API):
 
-# Load API key from environment variable (OPENAI_API_KEY)
+import os                                 # Access environment variables
+import openai                              # OpenAI Python client library
+
+# Set your API key (ensure OPENAI_API_KEY is defined in your environment)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def classify_intent(user_message: str) -> str:
+def solve_with_cot(question: str) -> str:
     """
-    Sends a few‑shot prompt to the Chat Completion endpoint.
-    Returns the model’s predicted intent label.
+    Sends a Chain‑of‑Thought prompt to the model and returns the final answer.
     """
-    # Few‑shot examples: each line shows an input and the expected label.
-    examples = [
-        ("I want to cancel my subscription", "Cancel Subscription"),
-        ("How do I reset my password?", "Password Reset"),
-        ("What are your pricing plans?", "Pricing Inquiry")
-    ]
-
-    # Build the prompt with a clear instruction and the examples.
-    prompt = "Classify the user intent of the following messages. Respond with only the intent label.\n\n"
-    for inp, label in examples:
-        prompt += f"Message: {inp}\nIntent: {label}\n\n"
-    # Add the new message we want classified.
-    prompt += f"Message: {user_message}\nIntent:"
-
-    # Call the Chat Completion API (using the gpt-3.5-turbo model).
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,               # deterministic output
-        max_tokens=20,                 # short answer
+    # Define the CoT prompt template
+    prompt = (
+        "You are a helpful AI that solves problems step by step.\n"
+        "Problem: " + question + "\n"
+        "Step‑by‑step reasoning:\n"
     )
-
-    # Extract and return the label text (strip whitespace and newlines).
-    return response.choices[0].message.content.strip()
+    
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",                # Choose a suitable model
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,                    # Low temperature for more deterministic reasoning
+        max_tokens=300,                     # Allow enough space for the reasoning chain
+        stop=None
+    )
+    
+    # The model returns the full reasoning; extract the final answer line
+    full_text = response.choices[0].message.content.strip()
+    # Assume the last line contains "Answer: <value>"
+    answer_line = [line for line in full_text.splitlines() if line.lower().startswith("answer:")]
+    return answer_line[0] if answer_line else "No answer found"
 
 # Example usage
-if __name__ == "__main__":
-    test_message = "Can you tell me how to change my billing address?"
-    intent = classify_intent(test_message)
-    print(f"Predicted intent: {intent}")
+question = "If a train travels 150 km in 2.5 hours, what is its average speed in km/h?"
+print(solve_with_cot(question))   # Expected output: "Answer: 60 km/h"
 */
 
