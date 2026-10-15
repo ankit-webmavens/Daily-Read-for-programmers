@@ -1,127 +1,86 @@
 <?php
-// 2026-10-14 06:38:24
+// 2026-10-15 06:21:27
 
 /* PHP
-Topic: Using PHP PDO (PHP Data Objects) for Secure Database Access
+Topic: PHP PDO Prepared Statements for Secure Database Access
 
 Explanation:
-- PDO provides a consistent interface for accessing many different databases (MySQL, PostgreSQL, SQLite, etc.) from PHP.
-- It supports prepared statements, which protect against SQL injection by separating query structure from data.
-- PDO throws exceptions on errors, allowing you to handle failures cleanly with try‑catch blocks.
-- You can fetch results as associative arrays, objects, or even bind them directly to variables.
-- Connection parameters are supplied as a DSN string, making it easy to switch databases without rewriting code.
+Prepared statements separate SQL logic from data, preventing SQL injection attacks by sending the query structure to the database before the actual values. PDO (PHP Data Objects) provides a uniform interface for interacting with different database systems using the same functions. With prepared statements, placeholders are used in the SQL query and later bound to variables. The database engine parses and compiles the query once, then can efficiently execute it multiple times with different parameters. Using PDO also allows handling errors through exceptions and supports transactions for atomic operations.
 
-Code example (MySQL connection, inserting a row, and retrieving data):
-
+Code example with comments:
 <?php
-// Enable error reporting for PDO
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,   // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch results as associative arrays
-    PDO::ATTR_EMULATE_PREPARES => false,           // Use native prepared statements
-];
-
-$host = 'localhost';
-$db   = 'sample_db';
-$user = 'db_user';
-$pass = 'db_password';
-$charset = 'utf8mb4';
-
-// Build DSN string
-$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+// Enable exception mode for PDO
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
 
 try {
-    // Create PDO instance
-    $pdo = new PDO($dsn, $user, $pass, $options);
+    $pdo = new PDO($dsn, $username, $password);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // INSERT using a prepared statement
-    $insertSql = "INSERT INTO users (username, email) VALUES (:username, :email)";
-    $stmt = $pdo->prepare($insertSql);
-    $stmt->execute([
-        ':username' => 'alice',
-        ':email'    => 'alice@example.com'
-    ]);
+    // Prepare an INSERT statement with named placeholders
+    $stmt = $pdo->prepare(
+        'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())'
+    );
 
-    // SELECT using a prepared statement
-    $selectSql = "SELECT id, username, email FROM users WHERE username = :username";
-    $stmt = $pdo->prepare($selectSql);
-    $stmt->execute([':username' => 'alice']);
+    // Sample data to insert
+    $data = [
+        ':username' => 'johndoe',
+        ':email'    => 'johndoe@example.com'
+    ];
 
-    // Fetch the result
-    $user = $stmt->fetch();
+    // Execute the prepared statement with the data array
+    $stmt->execute($data);
 
-    if ($user) {
-        echo "User ID: {$user['id']}\n";
-        echo "Username: {$user['username']}\n";
-        echo "Email: {$user['email']}\n";
-    } else {
-        echo "No user found.\n";
-    }
+    echo "New user added with ID: " . $pdo->lastInsertId();
 } catch (PDOException $e) {
-    // Handle connection or query errors
+    // Handle any errors
     echo "Database error: " . $e->getMessage();
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Dependency Injection
+Topic: Laravel Service Container & Automatic Dependency Resolution
 
-Explanation:
-The Laravel Service Container is a powerful tool that manages class dependencies and performs automatic injection. It resolves objects by reading type hints in constructors or method signatures, allowing you to decouple code and facilitate testing. You can bind interfaces to concrete classes, define singleton instances, or use contextual bindings for different implementations in various parts of the app. By leveraging the container, you keep controllers thin and push business logic into dedicated services. This pattern also makes it easy to swap implementations without changing the consuming code.
+Explanation:  
+The Service Container is the core of Laravel’s inversion of control (IoC) system. It manages class dependencies and performs automatic injection when a class or method type‑hints a dependency. By binding abstractions (interfaces) to concrete implementations, you can easily swap implementations without changing the consuming code. The container resolves dependencies recursively, creating objects with all their required sub‑dependencies. This makes testing, decoupling, and code reuse much simpler and keeps controllers thin.
 
-Code example (app/Providers/AppServiceProvider.php):
+Code Example (app/Providers/AppServiceProvider.php):
 public function register()
 {
-    // Bind an interface to a concrete class
+    // Bind an interface to a concrete class so the container knows what to inject
     $this->app->bind(
-        App\Contracts\PaymentGateway::class,
-        App\Services\StripePaymentGateway::class
+        App\Contracts\PaymentGateway::class,   // abstraction
+        App\Services\StripePaymentGateway::class // concrete implementation
     );
-
-    // Register a singleton instance (same object throughout the request lifecycle)
-    $this->app->singleton('logger', function ($app) {
-        return new Monolog\Logger('app', [
-            new Monolog\Handler\StreamHandler(storage_path('logs/app.log'))
-        ]);
-    });
 }
 
-// Usage in a controller (app/Http/Controllers/OrderController.php):
+Controller using automatic resolution (app/Http/Controllers/OrderController.php):
+namespace App\Http\Controllers;
+
 use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
-    protected $gateway;
-
-    // The container automatically injects the concrete StripePaymentGateway
-    public function __construct(PaymentGateway $gateway)
+    // The PaymentGateway instance is automatically injected by the container
+    public function store(Request $request, PaymentGateway $gateway)
     {
-        $this->gateway = $gateway;
-    }
+        // Validate and create order data (omitted for brevity)
 
-    public function store(Request $request)
-    {
-        // Use the injected payment gateway
-        $this->gateway->charge($request->input('amount'));
+        // Use the injected gateway to process the payment
+        $result = $gateway->charge($request->user(), $request->amount);
 
-        // Access the singleton logger via the container helper
-        $logger = app('logger');
-        $logger->info('Order placed', $request->all());
-
-        return response()->json(['status' => 'success']);
+        if ($result->successful()) {
+            // Continue order fulfillment
+        } else {
+            // Handle payment failure
+        }
     }
 }
 
-// Interface definition (app/Contracts/PaymentGateway.php):
-namespace App\Contracts;
-
-interface PaymentGateway
-{
-    public function charge(float $amount);
-}
-
-// Concrete implementation (app/Services/StripePaymentGateway.php):
+Concrete implementation (app/Services/StripePaymentGateway.php):
 namespace App\Services;
 
 use App\Contracts\PaymentGateway;
@@ -133,138 +92,129 @@ class StripePaymentGateway implements PaymentGateway
 
     public function __construct()
     {
-        // Initialize Stripe client with API key from config
+        // Initialise the Stripe client with secret key from config
         $this->stripe = new StripeClient(config('services.stripe.secret'));
     }
 
-    public function charge(float $amount)
+    // Method required by the PaymentGateway contract
+    public function charge($user, $amount)
     {
-        // Example charge request to Stripe
-        $this->stripe->charges->create([
+        // Example charge creation using Stripe's API
+        return $this->stripe->charges->create([
             'amount' => $amount * 100, // amount in cents
             'currency' => 'usd',
-            'source' => 'tok_visa', // placeholder token
-            'description' => 'Laravel Charge',
+            'customer' => $user->stripe_customer_id,
+            'description' => 'Order payment',
         ]);
     }
+}
+
+Contract definition (app/Contracts/PaymentGateway.php):
+namespace App\Contracts;
+
+interface PaymentGateway
+{
+    // All payment gateways must implement a charge method
+    public function charge($user, $amount);
 }
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) in MySQL  
+Topic: Common Table Expressions (CTE) and Recursive Queries in MySQL
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary named result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-MySQL supports both non‑recursive and recursive CTEs starting from version 8.0, enabling more readable queries and hierarchical data processing.  
-CTEs are defined using the WITH clause and exist only for the duration of the statement that follows it.  
-They can simplify complex subqueries, improve maintainability, and allow you to reference the same derived set multiple times without repeating the logic.  
-Recursive CTEs are particularly useful for traversing tree structures such as organizational charts or category hierarchies.  
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and improve query readability by separating complex logic from the main query.  
+MySQL supports both non‑recursive and recursive CTEs, the latter allowing hierarchical or graph‑like data traversal.  
+Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself.  
+They are useful for tasks such as building organizational charts, processing bill‑of‑materials, or generating series of numbers.  
 
-Code example (with inline comments):  
-WITH RECURSIVE employee_hierarchy AS (  
-    -- Anchor member: select the top‑level manager(s)  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
-    FROM employees  
-    WHERE manager_id IS NULL  
-
-    UNION ALL  
-
-    -- Recursive member: find subordinates of the previous level  
-    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1  
-    FROM employees e  
-    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id  
-)  
--- Final query: retrieve the hierarchy ordered by level and employee name  
-SELECT employee_id, manager_id, employee_name, level  
-FROM employee_hierarchy  
-ORDER BY level, employee_name;
+Code example (comments start with --):
+WITH RECURSIVE numbers AS (                                    -- Define a recursive CTE named numbers
+    SELECT 1 AS n                                              -- Anchor member: start with 1
+    UNION ALL
+    SELECT n + 1 FROM numbers WHERE n < 10                    -- Recursive member: add 1 until 10
+)
+SELECT n, n * n AS square                                     -- Main query: list numbers and their squares
+FROM numbers
+ORDER BY n;                                                    -- Result: rows 1 through 10 with squares  
 */
 
 /* JavaScript
-Topic: Event Delegation in the DOM
+Topic: JavaScript Closures
 
 Explanation:
-Event delegation is a technique where a single event listener is attached to a parent element to handle events fired by its child elements. This reduces the number of listeners, improves performance, and works for dynamically added elements. The listener uses the event object's target property to determine which child triggered the event. It is especially useful for lists, tables, or any container with many interactive children. By leveraging bubbling, you can centralize logic and keep your code cleaner.
+A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context. This allows the inner function to remember variables from the outer function even after the outer function has finished executing. Closures are useful for data privacy, creating function factories, and maintaining state in asynchronous code. They are created every time a function is defined, not when it is called. Understanding closures helps avoid common pitfalls with variable scoping and memory leaks.
 
 Code example with comments:
-// HTML structure (for reference)
-// <ul id="menu">
-//   <li data-action="new">New File</li>
-//   <li data-action="open">Open File</li>
-//   <li data-action="save">Save File</li>
-// </ul>
+function createCounter(start) {
+    // The variable count is private to the returned function
+    let count = start;
 
-// JavaScript
-const menu = document.getElementById('menu');
+    // The inner function forms a closure over count
+    return function() {
+        // Increment the private count each time the function is called
+        count++;
+        // Return the updated count value
+        return count;
+    };
+}
 
-// Attach one click listener to the parent <ul>
-menu.addEventListener('click', function(event) {
-  // Determine the actual element that was clicked
-  const clickedItem = event.target;
-  
-  // Ensure the click originated from a <li> (ignore clicks on the <ul> itself)
-  if (clickedItem.tagName.toLowerCase() === 'li') {
-    const action = clickedItem.getAttribute('data-action');
-    
-    // Perform the appropriate action based on the data-action value
-    switch (action) {
-      case 'new':
-        console.log('Creating a new file...');
-        break;
-      case 'open':
-        console.log('Opening an existing file...');
-        break;
-      case 'save':
-        console.log('Saving the current file...');
-        break;
-      default:
-        console.log('Unknown action:', action);
-    }
-  }
-});
+// Create a new counter starting at 5
+const counter = createCounter(5);
+
+// Call the counter multiple times
+console.log(counter()); // 6
+console.log(counter()); // 7
+console.log(counter()); // 8
+
+// The original count variable is not directly accessible from the outside
+// console.log(count); // ReferenceError: count is not defined
+
+// Each call to createCounter produces an independent closure
+const anotherCounter = createCounter(10);
+console.log(anotherCounter()); // 11
+console.log(counter()); // 9 (the first counter continues its own sequence)
 */
 
 /* AI
-Topic: Chain‑of‑Thought Prompting for Large Language Models  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s ChatCompletion API  
 
 Explanation:  
-Chain‑of‑Thought (CoT) prompting encourages a language model to generate step‑by‑step reasoning before giving a final answer. This technique improves performance on complex tasks such as math word problems, logical puzzles, and multi‑hop reasoning. By explicitly asking the model to “think aloud,” you can extract intermediate computations that guide the final output. CoT works best when the prompt provides a clear template that the model can follow consistently. It can be combined with temperature settings to balance creativity and deterministic reasoning.
+1. Few‑shot prompting supplies the model with a handful of example input‑output pairs to steer its behavior without fine‑tuning.  
+2. By embedding these demonstrations in the system or user messages, the model infers the pattern and applies it to new queries.  
+3. This technique works well for tasks like text classification, format conversion, or generating structured data.  
+4. The quality of the output depends on the clarity and relevance of the examples, as well as the temperature setting.  
+5. Using the OpenAI Python client, you can construct a prompt list that alternates between “user” and “assistant” roles to implement few‑shot learning.  
 
-Code example (Python, using OpenAI’s API):
+Code example (Python, requires `openai` package and a valid API key):
 
-import os                                 # Access environment variables
-import openai                              # OpenAI Python client library
+import os
+import openai
 
-# Set your API key (ensure OPENAI_API_KEY is defined in your environment)
+# Set your API key – replace with your own or use an environment variable
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def solve_with_cot(question: str) -> str:
-    """
-    Sends a Chain‑of‑Thought prompt to the model and returns the final answer.
-    """
-    # Define the CoT prompt template
-    prompt = (
-        "You are a helpful AI that solves problems step by step.\n"
-        "Problem: " + question + "\n"
-        "Step‑by‑step reasoning:\n"
-    )
-    
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",                # Choose a suitable model
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,                    # Low temperature for more deterministic reasoning
-        max_tokens=300,                     # Allow enough space for the reasoning chain
-        stop=None
-    )
-    
-    # The model returns the full reasoning; extract the final answer line
-    full_text = response.choices[0].message.content.strip()
-    # Assume the last line contains "Answer: <value>"
-    answer_line = [line for line in full_text.splitlines() if line.lower().startswith("answer:")]
-    return answer_line[0] if answer_line else "No answer found"
+# Define a few‑shot prompt: two examples of converting a bullet list into JSON
+messages = [
+    {"role": "system", "content": "You are a helpful assistant that converts bullet lists into JSON arrays."},
+    {"role": "user", "content": "- Apple\n- Banana\n- Cherry"},
+    {"role": "assistant", "content": '[ "Apple", "Banana", "Cherry" ]'},
+    {"role": "user", "content": "- Red\n- Green\n- Blue"},
+    {"role": "assistant", "content": '[ "Red", "Green", "Blue" ]'},
+    # New request that follows the same pattern
+    {"role": "user", "content": "- Monday\n- Tuesday\n- Wednesday"}
+]
 
-# Example usage
-question = "If a train travels 150 km in 2.5 hours, what is its average speed in km/h?"
-print(solve_with_cot(question))   # Expected output: "Answer: 60 km/h"
+# Call the ChatCompletion endpoint with temperature=0 for deterministic output
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",          # choose an appropriate model
+    messages=messages,
+    temperature=0.0
+)
+
+# Extract and print the model’s answer
+output = response.choices[0].message["content"]
+print("Generated JSON:", output)
 */
 
