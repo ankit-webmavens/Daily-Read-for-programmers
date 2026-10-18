@@ -1,45 +1,59 @@
 <?php
-// 2026-10-17 06:03:44
+// 2026-10-18 06:31:06
 
 /* PHP
-Topic: PHP Generators (Yield)
+Topic: Secure Database Queries with PDO and Prepared Statements  
 
-Explanation:
-Generators allow you to create iterators without building an entire array in memory.  
-When a function contains the keyword `yield`, PHP returns a Generator object that produces values one at a time.  
-This is especially useful for processing large data sets, streaming files, or any situation where you want lazy evaluation.  
-Each call to `next()` resumes execution right after the previous `yield`, preserving local variable state.  
-Generators reduce memory consumption and can improve performance compared to returning large arrays.
+Explanation:  
+PDO (PHP Data Objects) provides a uniform interface for accessing many different databases, making code portable and easier to maintain. Using prepared statements with named or positional placeholders separates SQL logic from data, which prevents SQL injection attacks. The driver sends the statement template to the database first, then binds the actual values, allowing the database to treat them strictly as data. PDO also supports error handling via exceptions, giving developers fine‑grained control over failure cases. This approach is recommended for any application that interacts with a relational database, especially when handling user‑supplied input.  
 
-Code example (with inline comments):
+Code example with comments:  
+<?php  
+// Database connection parameters  
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';  
+$username = 'dbuser';  
+$password = 'dbpass';  
 
-<?php
-// A generator that yields the first n Fibonacci numbers
-function fibonacciGenerator(int $n): Generator
-{
-    $a = 0;               // First number in the sequence
-    $b = 1;               // Second number in the sequence
-    for ($i = 0; $i < $n; $i++) {
-        yield $a;         // Return current number, pause function state
-        $temp = $a + $b;  // Compute next number
-        $a = $b;          // Shift values forward
-        $b = $temp;
-    }
-}
+try {  
+    // Create a new PDO instance  
+    $pdo = new PDO($dsn, $username, $password);  
+    // Configure PDO to throw exceptions on error  
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);  
 
-// Use the generator
-foreach (fibonacciGenerator(10) as $index => $value) {
-    echo "Fibonacci #{$index}: {$value}\n";
-}
+    // Prepare an INSERT statement with named placeholders  
+    $stmt = $pdo->prepare('INSERT INTO users (email, password_hash) VALUES (:email, :hash)');  
+
+    // Values to be inserted – could come from user input  
+    $email = 'user@example.com';  
+    $hash = password_hash('secret123', PASSWORD_DEFAULT);  
+
+    // Bind the PHP variables to the statement placeholders  
+    $stmt->bindParam(':email', $email);  
+    $stmt->bindParam(':hash', $hash);  
+
+    // Execute the prepared statement  
+    $stmt->execute();  
+
+    echo 'User added successfully';  
+} catch (PDOException $e) {  
+    // Output or log the error message  
+    echo 'Database error: ' . $e->getMessage();  
+}  
 ?>
 */
 
 /* Laravel
 Topic: Laravel Queues with Redis
 
-Explanation: Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or making API calls to a background worker. By using Redis as the queue driver, you get fast in‑memory storage and reliable message delivery. Jobs are defined as classes that implement the ShouldQueue interface, and they can be dispatched from anywhere in your application. The queue worker continuously pulls jobs from Redis, runs them, and automatically handles retries and failures. This setup improves response time for end users and scales horizontally by adding more workers.
+Explanation:  
+Laravel queues allow time‑consuming tasks (such as sending emails or processing images) to run in the background, keeping web requests fast.  
+Redis is a fast, in‑memory data store that Laravel can use as a queue driver, providing high throughput and low latency.  
+To use Redis queues you configure the driver, create a job class, and dispatch the job; a queue worker then processes jobs asynchronously.  
+Laravel’s queue system handles retries, failures, and job timeouts automatically, making it reliable for production workloads.  
+Using Redis also enables you to monitor queue lengths and worker status via Redis CLI tools.
 
 Code example (Job class and dispatch):
+
 <?php
 namespace App\Jobs;
 
@@ -54,175 +68,142 @@ class SendWelcomeEmail implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $user; // The user instance to email
+    protected $user;
 
-    // Job constructor receives the data needed for processing
+    // Job receives the user instance when dispatched
     public function __construct($user)
     {
         $this->user = $user;
     }
 
-    // This method is called by the worker
+    // This method is called by the queue worker
     public function handle()
     {
-        // Use Laravel's Mail facade to send the email
+        // Example email sending logic
         Mail::to($this->user->email)->send(new \App\Mail\WelcomeMail($this->user));
     }
-
-    // Optional: define how many times the job should be retried
-    public function retryUntil()
-    {
-        return now()->addMinutes(10);
-    }
 }
 
-// Dispatching the job somewhere in a controller or service
-use App\Jobs\SendWelcomeEmail;
+// Dispatching the job from a controller or service
+// The job will be pushed onto the Redis queue named 'default'
+$user = \App\Models\User::find(1);
+SendWelcomeEmail::dispatch($user);
 
-public function register(Request $request)
-{
-    $user = User::create($request->all());
+--- Configuration (config/queue.php) ---
+'default' => env('QUEUE_CONNECTION', 'redis'),
 
-    // Push the job onto the Redis queue; it will be processed asynchronously
-    SendWelcomeEmail::dispatch($user);
+'connections' => [
+    'redis' => [
+        'driver' => 'redis',
+        'connection' => 'default',
+        'queue' => env('REDIS_QUEUE', 'default'),
+        'retry_after' => 90,
+        'block_for' => null,
+    ],
+],
 
-    return response()->json(['message' => 'User registered, welcome email queued.']);
-}
-?>
+--- Starting a worker ---
+php artisan queue:work redis --queue=default --sleep=3 --tries=3
+
+The worker will continuously pull jobs from the Redis list, execute the handle() method, and remove the job when completed.
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) and Recursive Queries
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
-Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and improves readability by breaking complex queries into logical building blocks. Recursive CTEs allow you to perform hierarchical or graph‑traversal queries, such as retrieving an employee’s management chain or generating a series of dates. The recursion consists of an anchor member (the base case) and a recursive member that references the CTE itself. Recursive CTEs stop when the recursive member returns no rows, preventing infinite loops.
+Explanation:  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs improve readability by allowing you to break complex queries into logical building blocks. They are defined using the WITH clause and can be recursive, enabling hierarchical data processing such as traversing parent‑child relationships. Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself, iterating until no new rows are produced. This feature is especially useful for organizational charts, bill‑of‑materials, or any tree‑structured data.
 
-Code example with comments:
--- Create a sample table to hold an organizational hierarchy
-CREATE TABLE employees (
-    emp_id INT PRIMARY KEY,
-    emp_name VARCHAR(50),
-    manager_id INT NULL
-);
+Code example (recursive CTE to list an employee hierarchy):
 
--- Insert sample data
-INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
-(1, 'Alice', NULL),      -- top‑level manager
-(2, 'Bob', 1),
-(3, 'Carol', 1),
-(4, 'David', 2),
-(5, 'Eve', 2),
-(6, 'Frank', 3);
+WITH RECURSIVE emp_hierarchy AS (  
+    -- Anchor member: start with the top‑level manager (e.g., employee_id = 1)  
+    SELECT employee_id, manager_id, employee_name, 1 AS level  
+    FROM employees  
+    WHERE employee_id = 1  
 
--- Recursive CTE to list the management chain for a given employee (e.g., employee 5)
-WITH RECURSIVE management_chain AS (
-    -- Anchor member: start with the selected employee
-    SELECT emp_id, emp_name, manager_id, 0 AS level
-    FROM employees
-    WHERE emp_id = 5
-    UNION ALL
-    -- Recursive member: join back to the employees table to climb up the hierarchy
-    SELECT e.emp_id, e.emp_name, e.manager_id, mc.level + 1
-    FROM employees e
-    INNER JOIN management_chain mc ON e.emp_id = mc.manager_id
-)
-SELECT emp_id, emp_name, manager_id, level
-FROM management_chain
-ORDER BY level DESC;
+    UNION ALL  
 
--- The result shows Eve (level 0), her manager Bob (level 1), and the top manager Alice (level 2)  
+    -- Recursive member: find direct reports of the previous level  
+    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1  
+    FROM employees e  
+    INNER JOIN emp_hierarchy eh ON e.manager_id = eh.employee_id  
+)  
+SELECT employee_id, manager_id, employee_name, level  
+FROM emp_hierarchy  
+ORDER BY level, employee_id;  
 */
 
 /* JavaScript
-Topic: Async/Await with Error Handling
+Topic: Closures in JavaScript  
 
-Explanation:
-Async/Await simplifies working with promises by allowing asynchronous code to be written in a synchronous style. It makes error handling more straightforward, because try/catch blocks can be used around awaited calls. When an awaited promise rejects, the control flow jumps to the nearest catch block. This pattern eliminates the need for nested .then() and .catch() chains. It also integrates well with Promise.all for parallel operations while still preserving readable error handling.
+Explanation:  
+A closure is a function that retains access to variables from its lexical scope even after that outer function has finished executing.  
+Closures enable data privacy, allowing you to create private variables that cannot be accessed directly from outside.  
+They are created automatically whenever an inner function references a variable from an outer function.  
+Common use‑cases include function factories, memoization, and managing state in event handlers.  
+Understanding closures is essential for mastering asynchronous patterns and functional programming in JavaScript.  
 
-Code Example:
-async function fetchData(url) {
-    try {
-        const response = await fetch(url); // wait for the HTTP request
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json(); // parse JSON body
-        return data; // resolved value
-    } catch (error) {
-        console.error('Failed to fetch data:', error); // handle any error
-        // Re‑throw if you want the caller to also handle it
-        throw error;
-    }
-}
+Code example:  
+function makeCounter() {  
+    let count = 0;                     // private variable, not accessible outside  
+    return function() {                // inner function forms a closure  
+        count++;                       // can read and modify 'count' from outer scope  
+        console.log(count);            // each call logs an incremented value  
+    };                                 // the returned function retains access to 'count'  
+}  
 
-// Usage
-(async () => {
-    try {
-        const result = await fetchData('https://api.example.com/items');
-        console.log('Data received:', result);
-    } catch (e) {
-        console.log('Outer catch: could not retrieve items.');
-    }
-})();
+const counterA = makeCounter(); // creates a new closure with its own 'count'  
+counterA(); // 1  
+counterA(); // 2  
+
+const counterB = makeCounter(); // separate closure, independent 'count'  
+counterB(); // 1   (counterB's count starts from 0)  
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
+Topic: Prompt Engineering for Few‑Shot Learning with the OpenAI Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small number of example input‑output pairs within the same request, guiding it toward the desired behavior without fine‑tuning. By carefully crafting the examples and using system messages to set context, you can achieve reliable, task‑specific responses. This technique works well for classification, data extraction, or transformation tasks where a full training pipeline would be overkill. It leverages the model’s in‑context learning abilities and can be adjusted on the fly by adding or modifying examples. The approach is inexpensive, fast to iterate, and integrates directly with any OpenAI‑compatible client library.
+Few‑shot prompting lets a language model learn a new task by seeing a handful of input‑output examples embedded in the prompt. The model infers the pattern and applies it to new inputs without any parameter updates. Selecting clear, concise examples and a consistent format improves reliability. Including an explicit instruction line helps the model understand the expected behavior. This technique works well for classification, transformation, or extraction tasks where fine‑tuning is not feasible.  
 
-Code example (Python, using the openai package):
+Code example (Python, using openai library):  
 
-import os
-import openai
+import openai  
 
-# Load your API key from an environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set your API key (ensure it is kept secure)  
+openai.api_key = "YOUR_API_KEY"  
 
-# Define the system prompt to set overall behavior
-system_message = {
-    "role": "system",
-    "content": "You are a helpful assistant that extracts the due date from meeting notes."
-}
+# Define a few‑shot prompt for sentiment classification  
+examples = """\
+Review: I loved the movie, it was fantastic!  
+Sentiment: Positive  
 
-# Few‑shot examples: each user‑assistant pair demonstrates the desired extraction
-few_shot = [
-    {
-        "role": "user",
-        "content": "Meeting notes: Discuss project timeline. Action: finalize design by March 15."
-    },
-    {
-        "role": "assistant",
-        "content": "Due date: March 15"
-    },
-    {
-        "role": "user",
-        "content": "Notes: Budget review scheduled. Follow‑up needed on April 2."
-    },
-    {
-        "role": "assistant",
-        "content": "Due date: April 2"
-    }
-]
+Review: The plot was boring and predictable.  
+Sentiment: Negative  
 
-# New query we want the model to answer
-new_query = {
-    "role": "user",
-    "content": "Notes: Team agreed to submit the test plan next Friday."
-}
+Review: It was okay, not great but not terrible.  
+Sentiment: Neutral  
 
-# Assemble the full message list
-messages = [system_message] + few_shot + [new_query]
+"""  
 
-# Call the Chat Completion endpoint
-response = openai.ChatCompletion.create(
-    model="gpt-4o-mini",          # Choose a suitable model
-    messages=messages,
-    temperature=0.0               # Deterministic output for extraction tasks
-)
+# New user input we want classified  
+new_review = "The acting was superb, but the story fell flat."  
 
-# Print the extracted due date
-print("Model response:", response.choices[0].message.content.strip())
+# Assemble the final prompt by appending the new instance without the label  
+prompt = examples + f"Review: {new_review}\nSentiment:"  
+
+# Call the OpenAI completion endpoint  
+response = openai.Completion.create(  
+    model="text-davinci-003",  
+    prompt=prompt,  
+    max_tokens=5,  
+    temperature=0.0,   # deterministic output for classification  
+    stop=["\\n"]       # stop at end of label line  
+)  
+
+# Extract and print the predicted sentiment  
+predicted_sentiment = response.choices[0].text.strip()  
+print(f"Predicted sentiment: {predicted_sentiment}")  
 */
 
