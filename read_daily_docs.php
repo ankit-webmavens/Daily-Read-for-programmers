@@ -1,209 +1,242 @@
 <?php
-// 2026-10-18 06:31:06
+// 2026-10-19 06:43:21
 
 /* PHP
-Topic: Secure Database Queries with PDO and Prepared Statements  
+Topic: Using Prepared Statements with PDO for Secure Database Queries
 
 Explanation:  
-PDO (PHP Data Objects) provides a uniform interface for accessing many different databases, making code portable and easier to maintain. Using prepared statements with named or positional placeholders separates SQL logic from data, which prevents SQL injection attacks. The driver sends the statement template to the database first, then binds the actual values, allowing the database to treat them strictly as data. PDO also supports error handling via exceptions, giving developers fine‑grained control over failure cases. This approach is recommended for any application that interacts with a relational database, especially when handling user‑supplied input.  
+Prepared statements separate SQL code from data, preventing SQL injection attacks by sending the query structure to the database first and then binding user‑supplied values. PDO (PHP Data Objects) provides a consistent interface for many database systems, making it easy to switch drivers without changing application code. When you prepare a statement, the database can optimize the query plan once and reuse it for multiple executions, which can improve performance. Binding parameters also handles proper escaping and type conversion automatically. This approach is considered best practice for any application that accepts external input for database operations.
 
-Code example with comments:  
-<?php  
-// Database connection parameters  
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';  
-$username = 'dbuser';  
-$password = 'dbpass';  
+Code example with comments:
+<?php
+// Create a new PDO instance (replace DSN, username, and password with real values)
+$dsn = 'mysql:host=localhost;dbname=example_db;charset=utf8mb4';
+$username = 'db_user';
+$password = 'db_pass';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch results as associative arrays
+];
+$pdo = new PDO($dsn, $username, $password, $options);
 
-try {  
-    // Create a new PDO instance  
-    $pdo = new PDO($dsn, $username, $password);  
-    // Configure PDO to throw exceptions on error  
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);  
+// Prepare an INSERT statement with named placeholders
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
+$stmt = $pdo->prepare($sql);
 
-    // Prepare an INSERT statement with named placeholders  
-    $stmt = $pdo->prepare('INSERT INTO users (email, password_hash) VALUES (:email, :hash)');  
+// Bind values to the placeholders (automatic type handling)
+$stmt->bindValue(':username', $_POST['username']);
+$stmt->bindValue(':email', $_POST['email']);
 
-    // Values to be inserted – could come from user input  
-    $email = 'user@example.com';  
-    $hash = password_hash('secret123', PASSWORD_DEFAULT);  
+// Execute the statement; returns true on success
+if ($stmt->execute()) {
+    echo "User added successfully.";
+} else {
+    echo "Failed to add user.";
+}
 
-    // Bind the PHP variables to the statement placeholders  
-    $stmt->bindParam(':email', $email);  
-    $stmt->bindParam(':hash', $hash);  
+// Example of fetching data with a prepared SELECT statement
+$selectSql = "SELECT id, username, email FROM users WHERE email = :email";
+$selectStmt = $pdo->prepare($selectSql);
+$selectStmt->bindValue(':email', $_POST['email']);
+$selectStmt->execute();
+$user = $selectStmt->fetch();
 
-    // Execute the prepared statement  
-    $stmt->execute();  
-
-    echo 'User added successfully';  
-} catch (PDOException $e) {  
-    // Output or log the error message  
-    echo 'Database error: ' . $e->getMessage();  
-}  
+if ($user) {
+    echo "User ID: " . $user['id'];
+} else {
+    echo "No user found with that email.";
+}
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues with Redis
+Topic: Laravel Custom Validation Rules
 
 Explanation:  
-Laravel queues allow time‑consuming tasks (such as sending emails or processing images) to run in the background, keeping web requests fast.  
-Redis is a fast, in‑memory data store that Laravel can use as a queue driver, providing high throughput and low latency.  
-To use Redis queues you configure the driver, create a job class, and dispatch the job; a queue worker then processes jobs asynchronously.  
-Laravel’s queue system handles retries, failures, and job timeouts automatically, making it reliable for production workloads.  
-Using Redis also enables you to monitor queue lengths and worker status via Redis CLI tools.
+A custom validation rule allows you to encapsulate complex validation logic that isn’t covered by Laravel’s built‑in rules.  
+You create a rule class with the Artisan command `php artisan make:rule RuleName`, then implement the `passes` method to define the check and the `message` method for the error message.  
+The rule can be used directly in form request classes or controller validation arrays just like any native rule.  
+It keeps validation logic reusable, testable, and separated from controller code.  
+Custom rules are especially useful for checks that involve database queries, external APIs, or intricate business rules.
 
-Code example (Job class and dispatch):
-
+Code example (UserRequest.php):
 <?php
-namespace App\Jobs;
+namespace App\Http\Requests;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Mail;
+use Illuminate\Foundation\Http\FormRequest;
+use App\Rules\ValidReferralCode; // custom rule
 
-class SendWelcomeEmail implements ShouldQueue
+class UserRequest extends FormRequest
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    protected $user;
-
-    // Job receives the user instance when dispatched
-    public function __construct($user)
+    public function authorize()
     {
-        $this->user = $user;
+        return true; // authorize all users for this example
     }
 
-    // This method is called by the queue worker
-    public function handle()
+    public function rules()
     {
-        // Example email sending logic
-        Mail::to($this->user->email)->send(new \App\Mail\WelcomeMail($this->user));
+        return [
+            'email'    => 'required|email|unique:users,email',
+            'password' => 'required|min:8|confirmed',
+            'referral' => ['nullable', new ValidReferralCode()], // apply custom rule
+        ];
     }
 }
+?>
 
-// Dispatching the job from a controller or service
-// The job will be pushed onto the Redis queue named 'default'
-$user = \App\Models\User::find(1);
-SendWelcomeEmail::dispatch($user);
+Code example (ValidReferralCode.php):
+<?php
+namespace App\Rules;
 
---- Configuration (config/queue.php) ---
-'default' => env('QUEUE_CONNECTION', 'redis'),
+use Illuminate\Contracts\Validation\Rule;
+use App\Models\Referral; // model that stores valid codes
 
-'connections' => [
-    'redis' => [
-        'driver' => 'redis',
-        'connection' => 'default',
-        'queue' => env('REDIS_QUEUE', 'default'),
-        'retry_after' => 90,
-        'block_for' => null,
-    ],
-],
+class ValidReferralCode implements Rule
+{
+    // The passes method receives the attribute name and its value
+    public function passes($attribute, $value)
+    {
+        // Check that the referral code exists and is still active
+        return Referral::where('code', $value)
+                       ->where('is_active', true)
+                       ->exists();
+    }
 
---- Starting a worker ---
-php artisan queue:work redis --queue=default --sleep=3 --tries=3
-
-The worker will continuously pull jobs from the Redis list, execute the handle() method, and remove the job when completed.
+    // Return the validation error message
+    public function message()
+    {
+        return 'The :attribute is invalid or has expired.';
+    }
+}
+?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries
+Topic: Stored Procedures with IN, OUT, and INOUT Parameters
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs improve readability by allowing you to break complex queries into logical building blocks. They are defined using the WITH clause and can be recursive, enabling hierarchical data processing such as traversing parent‑child relationships. Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself, iterating until no new rows are produced. This feature is especially useful for organizational charts, bill‑of‑materials, or any tree‑structured data.
+A stored procedure is a pre‑compiled set of SQL statements that can be executed repeatedly.  
+MySQL allows you to define parameters that are passed into the procedure (IN), returned to the caller (OUT), or both (INOUT).  
+Using parameters makes procedures flexible, letting you reuse the same logic with different input values.  
+OUT and INOUT parameters are useful for returning computed results without needing a result set.  
+Proper declaration of parameter types (e.g., INT, VARCHAR) ensures type safety and clear contract between the caller and the procedure.
 
-Code example (recursive CTE to list an employee hierarchy):
+Code Example:
+CREATE PROCEDURE GetEmployeeStats(
+    IN  p_department_id INT,
+    OUT p_employee_count INT,
+    INOUT p_average_salary DECIMAL(10,2)
+)
+BEGIN
+    -- Count employees in the given department
+    SELECT COUNT(*) INTO p_employee_count
+    FROM employees
+    WHERE department_id = p_department_id;
 
-WITH RECURSIVE emp_hierarchy AS (  
-    -- Anchor member: start with the top‑level manager (e.g., employee_id = 1)  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
-    FROM employees  
-    WHERE employee_id = 1  
+    -- Calculate average salary; if p_average_salary is NULL, set it to the computed value
+    IF p_average_salary IS NULL THEN
+        SELECT AVG(salary) INTO p_average_salary
+        FROM employees
+        WHERE department_id = p_department_id;
+    ELSE
+        -- If caller supplied a starting value, add it to the computed average
+        SELECT AVG(salary) + p_average_salary INTO p_average_salary
+        FROM employees
+        WHERE department_id = p_department_id;
+    END IF;
+END;
 
-    UNION ALL  
-
-    -- Recursive member: find direct reports of the previous level  
-    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1  
-    FROM employees e  
-    INNER JOIN emp_hierarchy eh ON e.manager_id = eh.employee_id  
-)  
-SELECT employee_id, manager_id, employee_name, level  
-FROM emp_hierarchy  
-ORDER BY level, employee_id;  
+-- Example call:
+-- Declare variables to receive OUT/INOUT values
+SET @dept_id = 3;
+SET @emp_cnt = 0;
+SET @avg_sal = NULL;   -- will be calculated inside the procedure
+CALL GetEmployeeStats(@dept_id, @emp_cnt, @avg_sal);
+SELECT @emp_cnt AS employee_count, @avg_sal AS average_salary;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: Closures in JavaScript
 
-Explanation:  
-A closure is a function that retains access to variables from its lexical scope even after that outer function has finished executing.  
-Closures enable data privacy, allowing you to create private variables that cannot be accessed directly from outside.  
-They are created automatically whenever an inner function references a variable from an outer function.  
-Common use‑cases include function factories, memoization, and managing state in event handlers.  
-Understanding closures is essential for mastering asynchronous patterns and functional programming in JavaScript.  
+Explanation:
+- A closure is created when an inner function accesses variables from its outer (enclosing) function after the outer function has finished executing.  
+- The inner function retains a reference to the outer scope’s variables, preserving their state across calls.  
+- Closures enable data encapsulation, allowing private variables that cannot be accessed directly from the outside.  
+- They are fundamental for patterns like module creation, function factories, and maintaining state in callbacks.  
+- Understanding closures helps avoid common pitfalls such as unexpected variable sharing in loops or memory leaks.
 
-Code example:  
-function makeCounter() {  
-    let count = 0;                     // private variable, not accessible outside  
-    return function() {                // inner function forms a closure  
-        count++;                       // can read and modify 'count' from outer scope  
-        console.log(count);            // each call logs an incremented value  
-    };                                 // the returned function retains access to 'count'  
-}  
+Code Example with comments:
+// Define an outer function that creates a private counter
+function createCounter() {
+    // This variable is local to createCounter and will be captured by the inner function
+    var count = 0;
 
-const counterA = makeCounter(); // creates a new closure with its own 'count'  
-counterA(); // 1  
-counterA(); // 2  
+    // The inner function forms a closure over 'count'
+    return function increment() {
+        // Each call updates the captured 'count' variable
+        count++;
+        console.log('Current count:', count);
+    };
+}
 
-const counterB = makeCounter(); // separate closure, independent 'count'  
-counterB(); // 1   (counterB's count starts from 0)  
+// Obtain a new counter instance; 'counter' holds the inner function with its own closure
+var counter = createCounter();
+
+counter(); // Output: Current count: 1
+counter(); // Output: Current count: 2
+
+// Create a second independent counter to demonstrate separate closures
+var anotherCounter = createCounter();
+anotherCounter(); // Output: Current count: 1 (independent from the first counter)
 */
 
 /* AI
-Topic: Prompt Engineering for Few‑Shot Learning with the OpenAI Completion API  
+Topic: Few‑Shot Prompt Engineering for Large Language Models (LLMs)
 
-Explanation:  
-Few‑shot prompting lets a language model learn a new task by seeing a handful of input‑output examples embedded in the prompt. The model infers the pattern and applies it to new inputs without any parameter updates. Selecting clear, concise examples and a consistent format improves reliability. Including an explicit instruction line helps the model understand the expected behavior. This technique works well for classification, transformation, or extraction tasks where fine‑tuning is not feasible.  
+Explanation:
+Few‑shot prompting lets you guide an LLM’s behavior by providing a handful of example input‑output pairs directly in the prompt. This approach is model‑agnostic and works without any fine‑tuning, making it ideal for rapid prototyping. By carefully selecting diverse examples that illustrate the desired pattern, you can improve consistency and reduce hallucinations. The technique also allows you to inject domain‑specific knowledge or style constraints on the fly. When combined with temperature control and token limits, few‑shot prompts become a powerful tool for building reliable AI assistants.
 
-Code example (Python, using openai library):  
+Code example (Python, using OpenAI’s ChatCompletion API):
 
-import openai  
+import os
+import json
+import openai
 
-# Set your API key (ensure it is kept secure)  
-openai.api_key = "YOUR_API_KEY"  
+# Load your API key from an environment variable or a config file
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Define a few‑shot prompt for sentiment classification  
-examples = """\
-Review: I loved the movie, it was fantastic!  
-Sentiment: Positive  
+# Define a few‑shot prompt that teaches the model how to rewrite sentences in a formal tone
+system_message = {"role": "system", "content": "You are a helpful assistant that rewrites informal sentences into formal, business‑appropriate language."}
 
-Review: The plot was boring and predictable.  
-Sentiment: Negative  
+example_user_1 = {"role": "user", "content": "Hey, can you send me the report ASAP?"}
+example_assistant_1 = {"role": "assistant", "content": "Could you please send me the report at your earliest convenience?"}
 
-Review: It was okay, not great but not terrible.  
-Sentiment: Neutral  
+example_user_2 = {"role": "user", "content": "I need that data now."}
+example_assistant_2 = {"role": "assistant", "content": "I would appreciate receiving the data as soon as possible."}
 
-"""  
+# The new user query we want to rewrite
+new_user = {"role": "user", "content": "Give me the numbers for last quarter."}
 
-# New user input we want classified  
-new_review = "The acting was superb, but the story fell flat."  
+# Assemble the full message list in the order they should be processed
+messages = [
+    system_message,
+    example_user_1,
+    example_assistant_1,
+    example_user_2,
+    example_assistant_2,
+    new_user
+]
 
-# Assemble the final prompt by appending the new instance without the label  
-prompt = examples + f"Review: {new_review}\nSentiment:"  
+# Call the ChatCompletion endpoint with a low temperature for deterministic output
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",          # or any model you have access to
+    messages=messages,
+    temperature=0.2,              # lower temperature = more predictable results
+    max_tokens=150
+)
 
-# Call the OpenAI completion endpoint  
-response = openai.Completion.create(  
-    model="text-davinci-003",  
-    prompt=prompt,  
-    max_tokens=5,  
-    temperature=0.0,   # deterministic output for classification  
-    stop=["\\n"]       # stop at end of label line  
-)  
-
-# Extract and print the predicted sentiment  
-predicted_sentiment = response.choices[0].text.strip()  
-print(f"Predicted sentiment: {predicted_sentiment}")  
+# Extract and print the rewritten sentence
+rewritten = response["choices"][0]["message"]["content"]
+print("Formal rewrite:", rewritten)
 */
 
