@@ -1,242 +1,204 @@
 <?php
-// 2026-10-20 06:30:21
+// 2026-10-21 06:29:47
 
 /* PHP
-Topic: PDO Prepared Statements for Secure Database Access
+Topic: PHP Generators (Yield)
 
 Explanation:
-Prepared statements separate SQL code from data, preventing SQL injection attacks.  
-The PDO extension provides a consistent interface for many database systems.  
-You prepare the query once, then bind values to placeholders each time you execute.  
-This improves performance when the same statement runs multiple times with different data.  
-Using exceptions for error handling makes debugging easier and keeps code clean.
+Generators allow you to create iterators without building an entire array in memory.  
+By using the yield keyword, a function can pause its execution, return a value, and resume later.  
+This is especially useful for processing large data sets, streaming files, or handling infinite sequences.  
+Generators improve performance and reduce memory usage compared to returning full collections.  
+They can also receive values back into the generator using send() and be controlled with throw() and close().
 
-Code example with comments:
+Code Example:
 <?php
-// Enable exceptions for PDO errors
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-];
-
-// Create a new PDO connection (adjust DSN, username, password as needed)
-$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass', $options);
-
-// Prepare an INSERT statement with named placeholders
-$stmt = $pdo->prepare('INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())');
-
-// Data to be inserted
-$users = [
-    ['username' => 'alice', 'email' => 'alice@example.com'],
-    ['username' => 'bob',   'email' => 'bob@example.com'],
-];
-
-// Loop through data and execute the prepared statement for each row
-foreach ($users as $user) {
-    // Bind values to the named placeholders and execute
-    $stmt->execute([
-        ':username' => $user['username'],
-        ':email'    => $user['email'],
-    ]);
+// A generator function that yields numbers from 1 to $limit
+function numberSequence(int $limit): Generator
+{
+    for ($i = 1; $i <= $limit; $i++) {
+        // Yield the current number and pause execution
+        yield $i;
+    }
 }
 
-// Fetch and display all users to verify insertion
-foreach ($pdo->query('SELECT id, username, email, created_at FROM users') as $row) {
-    echo "ID: {$row['id']}, Username: {$row['username']}, Email: {$row['email']}, Created: {$row['created_at']}\n";
+// Use the generator
+$limit = 5;
+$gen = numberSequence($limit);
+
+foreach ($gen as $value) {
+    // Each iteration retrieves the next yielded value
+    echo "Value: $value\n";
 }
+
+// Demonstrating sending a value back into the generator
+function twoWayGenerator(): Generator
+{
+    $value = yield "Start";
+    // $value receives whatever is sent from outside
+    yield "Received: $value";
+}
+
+$tw = twoWayGenerator();
+echo $tw->current() . "\n";   // Outputs "Start"
+$tw->send("Hello");          // Sends "Hello" back, making $value = "Hello"
+echo $tw->current() . "\n";   // Outputs "Received: Hello"
 ?>
 */
 
 /* Laravel
-Topic: Form Request Validation in Laravel
+Topic: Laravel Queues with Redis
 
-Explanation:  
-Form Request classes encapsulate validation logic, keeping controllers clean and focused on handling requests.  
-They are generated via Artisan and automatically resolve through Laravel’s service container.  
-Define rules, custom messages, and authorize logic inside the request class.  
-When a request fails validation, Laravel redirects back with error messages and old input.  
-Using Form Requests promotes reusability and testability of validation rules across the application.  
+Explanation:
+Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or calling external APIs. By configuring the queue driver to use Redis, you get a fast, in‑memory data store that can handle high‑throughput job processing. Jobs are pushed onto a Redis list and workers pull them off, executing the job logic in the background. This improves the responsiveness of your web requests and helps scale your application horizontally. You can monitor and retry failed jobs using Laravel’s built‑in queue commands and dashboard.
 
-Code Example (UserStoreRequest.php):  
-<?php  
-namespace App\Http\Requests;  
+Code example with comments:
 
-use Illuminate\Foundation\Http\FormRequest;  
+<?php
+namespace App\Jobs;
 
-class UserStoreRequest extends FormRequest  
-{  
-    // Determine if the user is authorized to make this request  
-    public function authorize()  
-    {  
-        return true; // set to false to block unauthorized attempts  
-    }  
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Mail;
 
-    // Define the validation rules for the incoming request  
-    public function rules()  
-    {  
-        return [  
-            'name' => 'required|string|max:255',  
-            'email' => 'required|email|unique:users,email',  
-            'password' => 'required|string|min:8|confirmed',  
-        ];  
-    }  
+class SendWelcomeEmail implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    // Optional: customize validation error messages  
-    public function messages()  
-    {  
-        return [  
-            'email.unique' => 'The email address is already registered.',  
-        ];  
-    }  
-}  
+    protected $user; // The user instance that will receive the email
 
-Usage in a controller (UserController.php):  
-<?php  
-namespace App\Http\Controllers;  
+    // Constructor receives the user and stores it for later use
+    public function __construct($user)
+    {
+        $this->user = $user;
+    }
 
-use App\Http\Requests\UserStoreRequest;  
-use App\Models\User;  
+    // This method is called by the queue worker
+    public function handle()
+    {
+        // Build and send the welcome email
+        Mail::to($this->user->email)->send(new \App\Mail\WelcomeMail($this->user));
+    }
+}
 
-class UserController extends Controller  
-{  
-    // Store a newly created user using the Form Request for validation  
-    public function store(UserStoreRequest $request)  
-    {  
-        // Validation has already been performed; retrieve validated data  
-        $validated = $request->validated();  
+// Dispatching the job (e.g., from a controller)
+$user = \App\Models\User::find(1);
+// The job will be pushed onto the Redis queue named "default"
+SendWelcomeEmail::dispatch($user)->onQueue('emails');
 
-        // Create the user record  
-        $user = User::create([  
-            'name' => $validated['name'],  
-            'email' => $validated['email'],  
-            'password' => bcrypt($validated['password']),  
-        ]);  
+// To start a worker that processes the "emails" queue using the Redis driver:
+// php artisan queue:work redis --queue=emails --sleep=3 --tries=3
 
-        // Return a response or redirect  
-        return redirect()->route('users.show', $user)->with('status', 'User created successfully!');  
-    }  
-}  
+?>
 */
 
 /* MySQL
-Topic: Using Common Table Expressions (CTEs) for Recursive Queries
+Topic: Window Functions – Running Totals in MySQL
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement.  
-Recursive CTEs allow you to query hierarchical data such as organization charts or folder structures by repeatedly applying a query to its own output.  
-The CTE is defined with the WITH clause, followed by the CTE name and column list, then the anchor query and UNION ALL with the recursive part.  
-The recursion stops automatically when the recursive query returns no rows, preventing infinite loops.  
-Recursive CTEs are supported in MySQL 8.0 and later, offering a powerful alternative to stored procedures for hierarchical processing.
+Explanation:
+- Window functions operate on a set of rows related to the current row without collapsing the result set.
+- They are useful for calculations that need context, such as cumulative sums, moving averages, or ranking.
+- MySQL introduced full support for window functions in version 8.0, allowing efficient analytics directly in SQL.
+- A running total (cumulative sum) can be produced with the SUM() function combined with an OVER() clause that defines the ordering.
+- This technique avoids the need for self‑joins or user‑defined variables, making the query easier to read and maintain.
 
-Code example (comments included):
--- Sample table for a simple employee hierarchy
-CREATE TABLE employees (
-    emp_id INT PRIMARY KEY,
-    emp_name VARCHAR(50) NOT NULL,
-    manager_id INT NULL,            -- NULL indicates top‑level manager
-    FOREIGN KEY (manager_id) REFERENCES employees(emp_id)
+Code example (with comments):
+
+-- Create a sample sales table
+CREATE TABLE sales (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    sale_date DATE NOT NULL,
+    amount DECIMAL(10,2) NOT NULL
 );
 
 -- Insert sample data
-INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
-(1, 'Alice', NULL),      -- CEO
-(2, 'Bob', 1),
-(3, 'Carol', 1),
-(4, 'David', 2),
-(5, 'Eve', 2),
-(6, 'Frank', 3);
+INSERT INTO sales (sale_date, amount) VALUES
+('2024-01-01', 150.00),
+('2024-01-03', 200.00),
+('2024-01-04', 120.00),
+('2024-01-07', 300.00),
+('2024-01-08', 250.00);
 
--- Recursive CTE to list all subordinates of a given manager (e.g., manager_id = 1)
-WITH RECURSIVE subordinates AS (
-    -- Anchor member: start with the manager whose subordinates we want
-    SELECT emp_id, emp_name, manager_id, 1 AS level
-    FROM employees
-    WHERE manager_id = 1
+-- Query to compute a running total of sales ordered by date
+SELECT
+    id,
+    sale_date,
+    amount,
+    -- SUM() calculates the cumulative total up to the current row
+    SUM(amount) OVER (ORDER BY sale_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_total
+FROM sales
+ORDER BY sale_date;
 
-    UNION ALL
-
-    -- Recursive member: find employees whose manager is in the previous result set
-    SELECT e.emp_id, e.emp_name, e.manager_id, s.level + 1
-    FROM employees e
-    INNER JOIN subordinates s ON e.manager_id = s.emp_id
-)
-SELECT emp_id, emp_name, manager_id, level
-FROM subordinates
-ORDER BY level, emp_id;   -- shows hierarchy depth first
-
--- The query returns:
--- emp_id | emp_name | manager_id | level
---   2    | Bob      | 1          | 1
---   3    | Carol    | 1          | 1
---   4    | David    | 2          | 2
---   5    | Eve      | 2          | 2
---   6    | Frank    | 3          | 2   (and so on for deeper levels)
+-- The result shows each sale record with its corresponding cumulative sum in the running_total column.
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: Closures in JavaScript  
 
-Explanation:
-A closure is a function that retains access to its lexical scope even when the function is executed outside that scope.  
-It allows inner functions to "remember" the variables of their outer functions, enabling data privacy and partial application.  
-Closures are created every time a function is defined, and the retained variables stay alive as long as the closure can be reached.  
-They are commonly used for creating function factories, encapsulating state, and implementing the module pattern.  
-Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state across calls.
+Explanation:  
+A closure is a function that retains access to its lexical scope even when executed outside that scope.  
+It allows inner functions to "remember" variables from the outer function that have already finished executing.  
+Closures are created automatically every time a function is defined inside another function.  
+They are essential for data privacy, partial application, and creating function factories.  
+Understanding closures helps avoid common pitfalls with variable mutability and asynchronous code.  
 
-Code Example with comments:
-function makeCounter(initialValue) {               // outer function receives an initial count
-    let count = initialValue;                     // this variable is captured by the inner function
-    return function() {                          // the returned function forms a closure over 'count'
-        count += 1;                               // each call updates the private 'count' variable
-        return count;                            // the current count is returned
-    };
-}
-const counterA = makeCounter(0);                  // create a new counter starting at 0
-console.log(counterA()); // 1                     // first call increments to 1
-console.log(counterA()); // 2                     // second call increments to 2
-const counterB = makeCounter(10);                 // a separate counter with its own private state
-console.log(counterB()); // 11                    // independent of counterA’s state
-console.log(counterA()); // 3                     // counterA continues from its own last value  
+Code Example:  
+function makeCounter(initial) {                     // outer function creates a private variable  
+    let count = initial;                           // this variable is captured by the inner function  
+
+    return function step(increment) {              // inner function forms a closure over count  
+        count += increment;                        // modifies the captured variable  
+        return count;                              // returns the updated value  
+    };                                             // the closure is returned as a callable function  
+}                                                  // end of makeCounter  
+
+const counter = makeCounter(10);                    // counter now has its own private count starting at 10  
+console.log(counter(2));   // 12   // each call updates the private count  
+console.log(counter(5));   // 17   // the state is preserved across calls  
+console.log(counter(-3));  // 14   // closures keep the variable alive even after makeCounter finishes  
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI GPT‑4 API
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
-Explanation:
-Few‑shot prompting guides a large language model by providing a handful of example input‑output pairs within the same request. This technique helps the model infer the desired pattern without needing fine‑tuning. By carefully selecting diverse and representative examples, you can shape the model’s behavior for tasks such as text classification, data extraction, or code generation. The prompt typically consists of a short instruction, several examples, and finally the new user query. Adjusting the temperature and max_tokens parameters further controls creativity and length of the response.
+Explanation:  
+- Few‑shot prompting supplies a handful of example input‑output pairs to steer the model toward the desired behavior.  
+- By placing clear, concise demonstrations before the new query, the model learns the pattern without any fine‑tuning.  
+- This technique works well for classification, transformation, or reasoning tasks where a full dataset is unavailable.  
+- The prompt is constructed as a sequence of messages, alternating user and assistant roles, matching the chat API format.  
+- Keeping temperature low (e.g., 0.0) makes the output deterministic, which is important for reproducible classifications.  
 
-Code example (Python, using the openai library):
+Code example (Python, using the OpenAI API):  
 
-import os
-import openai
+import os  
+import openai  
 
-# Load your OpenAI API key from an environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Load API key from environment variable  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define the few‑shot prompt with instruction, examples, and the new input
-prompt = (
-    "You are an assistant that extracts the product name and price from a short description.\n\n"
-    "Example 1:\n"
-    "Input: \"A sleek stainless steel kettle, 1.7 L, priced at $29.99.\"\n"
-    "Output: {\"product\": \"stainless steel kettle\", \"price\": 29.99}\n\n"
-    "Example 2:\n"
-    "Input: \"Wireless earbuds with noise cancellation, cost $149.\"\n"
-    "Output: {\"product\": \"wireless earbuds\", \"price\": 149}\n\n"
-    "Now process the following description:\n"
-    "Input: \"Compact portable charger, 10000 mAh, available for $39.50.\"\n"
-    "Output:"
-)
+def classify_sentiment(text):  
+    # Few‑shot examples: user input followed by expected assistant label  
+    examples = [  
+        {"role": "user", "content": "I love this product! It works perfectly."},  
+        {"role": "assistant", "content": "Positive"},  
+        {"role": "user", "content": "The service was terrible and slow."},  
+        {"role": "assistant", "content": "Negative"},  
+    ]  
+    # Append the new query after the examples  
+    messages = examples + [{"role": "user", "content": text}]  
+    # Request completion from the chat model  
+    response = openai.ChatCompletion.create(  
+        model="gpt-3.5-turbo",  
+        messages=messages,  
+        temperature=0.0,   # deterministic output  
+    )  
+    # Return the model’s label (strip whitespace)  
+    return response.choices[0].message.content.strip()  
 
-# Call the GPT‑4 completion endpoint
-response = openai.Completion.create(
-    model="gpt-4o-mini",          # or "gpt-4" depending on your access
-    prompt=prompt,
-    max_tokens=60,                # limit the length of the JSON output
-    temperature=0.0,              # deterministic extraction
-    stop=["\n"]                   # stop after the first line of output
-)
-
-# Print the model's extracted JSON
-print(response.choices[0].text.strip())
+# Example usage  
+print(classify_sentiment("The movie had stunning visuals but a weak plot."))   # Expected: Neutral or Mixed, based on examples  
 */
 
