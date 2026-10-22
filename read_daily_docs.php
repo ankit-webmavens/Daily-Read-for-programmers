@@ -1,204 +1,240 @@
 <?php
-// 2026-10-21 06:29:47
+// 2026-10-22 06:31:49
 
 /* PHP
-Topic: PHP Generators (Yield)
+PHP Generators (Yield)
 
-Explanation:
-Generators allow you to create iterators without building an entire array in memory.  
-By using the yield keyword, a function can pause its execution, return a value, and resume later.  
+Generators allow you to create iterators without the overhead of building an entire array in memory.  
+By using the yield keyword, a function can return a value and pause its execution, resuming later.  
 This is especially useful for processing large data sets, streaming files, or handling infinite sequences.  
-Generators improve performance and reduce memory usage compared to returning full collections.  
-They can also receive values back into the generator using send() and be controlled with throw() and close().
+Generators improve performance and reduce memory consumption compared to traditional loops that collect all results.  
+They can also be combined with foreach, making iteration syntax seamless and readable.
 
-Code Example:
 <?php
-// A generator function that yields numbers from 1 to $limit
-function numberSequence(int $limit): Generator
-{
-    for ($i = 1; $i <= $limit; $i++) {
-        // Yield the current number and pause execution
-        yield $i;
+// Define a generator that yields the first n square numbers
+function squareNumbers(int $n) {
+    for ($i = 1; $i <= $n; $i++) {
+        // Yield the current square and pause execution
+        yield $i => $i * $i;
     }
 }
 
-// Use the generator
-$limit = 5;
-$gen = numberSequence($limit);
-
-foreach ($gen as $value) {
-    // Each iteration retrieves the next yielded value
-    echo "Value: $value\n";
+// Use the generator in a foreach loop
+foreach (squareNumbers(5) as $index => $square) {
+    // Output each index and its corresponding square
+    echo "Number $index squared is $square\n";
 }
-
-// Demonstrating sending a value back into the generator
-function twoWayGenerator(): Generator
-{
-    $value = yield "Start";
-    // $value receives whatever is sent from outside
-    yield "Received: $value";
-}
-
-$tw = twoWayGenerator();
-echo $tw->current() . "\n";   // Outputs "Start"
-$tw->send("Hello");          // Sends "Hello" back, making $value = "Hello"
-echo $tw->current() . "\n";   // Outputs "Received: Hello"
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues with Redis
+Topic: Laravel Service Container – Binding and Automatic Resolution  
 
-Explanation:
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or calling external APIs. By configuring the queue driver to use Redis, you get a fast, in‑memory data store that can handle high‑throughput job processing. Jobs are pushed onto a Redis list and workers pull them off, executing the job logic in the background. This improves the responsiveness of your web requests and helps scale your application horizontally. You can monitor and retry failed jobs using Laravel’s built‑in queue commands and dashboard.
+Explanation:  
+The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. By binding an interface to a concrete class, you tell the container which implementation to provide when the interface is requested. When a class type‑hinted in a controller or another class is resolved, Laravel will automatically inject the appropriate instance. This decouples your code, making it easier to swap implementations or mock dependencies during testing. The container also supports contextual bindings, allowing different implementations for the same interface in different situations.
 
-Code example with comments:
+Code example (PHP):
 
 <?php
-namespace App\Jobs;
+namespace App\Providers;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Mail;
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\PaymentGateway;
+use App\Services\StripeGateway;
+use App\Services\PayPalGateway;
 
-class SendWelcomeEmail implements ShouldQueue
+class AppServiceProvider extends ServiceProvider
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    protected $user; // The user instance that will receive the email
-
-    // Constructor receives the user and stores it for later use
-    public function __construct($user)
+    public function register()
     {
-        $this->user = $user;
-    }
+        // Simple binding: whenever PaymentGateway is requested, give StripeGateway
+        $this->app->bind(PaymentGateway::class, StripeGateway::class);
 
-    // This method is called by the queue worker
-    public function handle()
-    {
-        // Build and send the welcome email
-        Mail::to($this->user->email)->send(new \App\Mail\WelcomeMail($this->user));
+        // Contextual binding: for OrderController use PayPalGateway instead
+        $this->app->when(\App\Http\Controllers\OrderController::class)
+                  ->needs(PaymentGateway::class)
+                  ->give(PayPalGateway::class);
     }
 }
 
-// Dispatching the job (e.g., from a controller)
-$user = \App\Models\User::find(1);
-// The job will be pushed onto the Redis queue named "default"
-SendWelcomeEmail::dispatch($user)->onQueue('emails');
+// Example interface
+namespace App\Contracts;
 
-// To start a worker that processes the "emails" queue using the Redis driver:
-// php artisan queue:work redis --queue=emails --sleep=3 --tries=3
+interface PaymentGateway
+{
+    public function charge(float $amount);
+}
 
+// Stripe implementation
+namespace App\Services;
+
+use App\Contracts\PaymentGateway;
+
+class StripeGateway implements PaymentGateway
+{
+    public function charge(float $amount)
+    {
+        // Logic to charge via Stripe API
+        return "Charged $$amount with Stripe.";
+    }
+}
+
+// PayPal implementation
+namespace App\Services;
+
+use App\Contracts\PaymentGateway;
+
+class PayPalGateway implements PaymentGateway
+{
+    public function charge(float $amount)
+    {
+        // Logic to charge via PayPal API
+        return "Charged $$amount with PayPal.";
+    }
+}
+
+// Controller demonstrating automatic injection
+namespace App\Http\Controllers;
+
+use App\Contracts\PaymentGateway;
+
+class OrderController extends Controller
+{
+    protected $gateway;
+
+    // Laravel injects the appropriate PaymentGateway implementation
+    public function __construct(PaymentGateway $gateway)
+    {
+        $this->gateway = $gateway;
+    }
+
+    public function store()
+    {
+        $result = $this->gateway->charge(99.99);
+        return response()->json(['message' => $result]);
+    }
+}
 ?>
 */
 
 /* MySQL
-Topic: Window Functions – Running Totals in MySQL
+Topic: MySQL Stored Procedures with IN, OUT, and INOUT Parameters  
 
-Explanation:
-- Window functions operate on a set of rows related to the current row without collapsing the result set.
-- They are useful for calculations that need context, such as cumulative sums, moving averages, or ranking.
-- MySQL introduced full support for window functions in version 8.0, allowing efficient analytics directly in SQL.
-- A running total (cumulative sum) can be produced with the SUM() function combined with an OVER() clause that defines the ordering.
-- This technique avoids the need for self‑joins or user‑defined variables, making the query easier to read and maintain.
+Explanation:  
+Stored procedures let you group multiple SQL statements so they can be executed as a single unit, improving performance and maintainability.  
+Parameters can be defined as IN (input only), OUT (output only), or INOUT (both input and output), allowing data to be passed to and returned from the procedure.  
+Using parameters makes procedures reusable for different inputs without rewriting the logic each time.  
+Procedures can contain control‑flow statements such as IF, LOOP, and CASE to implement complex business rules.  
+When a procedure finishes, any OUT or INOUT parameters are sent back to the caller, enabling result communication without result sets.  
 
-Code example (with comments):
+Code example (with comments):  
 
--- Create a sample sales table
-CREATE TABLE sales (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    sale_date DATE NOT NULL,
-    amount DECIMAL(10,2) NOT NULL
-);
+-- Drop the procedure if it already exists to avoid errors  
+DROP PROCEDURE IF EXISTS GetEmployeeStats;  
 
--- Insert sample data
-INSERT INTO sales (sale_date, amount) VALUES
-('2024-01-01', 150.00),
-('2024-01-03', 200.00),
-('2024-01-04', 120.00),
-('2024-01-07', 300.00),
-('2024-01-08', 250.00);
+-- Create a new procedure that receives a department ID (IN) and returns the total salary (OUT) and average age (INOUT)  
+CREATE PROCEDURE GetEmployeeStats(  
+    IN dept_id INT,                -- input: department to analyze  
+    OUT total_salary DECIMAL(10,2),-- output: sum of salaries in the department  
+    INOUT avg_age DECIMAL(5,2)    -- input/output: initial average age (can be used as a starting value)  
+)  
+BEGIN  
+    -- Compute total salary for the given department and store it in the OUT parameter  
+    SELECT SUM(salary) INTO total_salary  
+    FROM employees  
+    WHERE department_id = dept_id;  
 
--- Query to compute a running total of sales ordered by date
-SELECT
-    id,
-    sale_date,
-    amount,
-    -- SUM() calculates the cumulative total up to the current row
-    SUM(amount) OVER (ORDER BY sale_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_total
-FROM sales
-ORDER BY sale_date;
+    -- Compute average age; if the caller supplied a non‑NULL value, use it as a weighted contribution  
+    IF avg_age IS NULL THEN  
+        SELECT AVG(age) INTO avg_age  
+        FROM employees  
+        WHERE department_id = dept_id;  
+    ELSE  
+        SELECT ( (avg_age * 1) + AVG(age) ) / 2 INTO avg_age   -- simple averaging with caller's value  
+        FROM employees  
+        WHERE department_id = dept_id;  
+    END IF;  
+END;  
 
--- The result shows each sale record with its corresponding cumulative sum in the running_total column.
+-- Example call: retrieve stats for department 3, capture output values in session variables  
+SET @total = 0;  
+SET @average = NULL;  
+CALL GetEmployeeStats(3, @total, @average);  
+
+-- Display the results returned via OUT/INOUT parameters  
+SELECT @total AS TotalSalary, @average AS AverageAge;  
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: Closures in JavaScript
 
-Explanation:  
-A closure is a function that retains access to its lexical scope even when executed outside that scope.  
-It allows inner functions to "remember" variables from the outer function that have already finished executing.  
-Closures are created automatically every time a function is defined inside another function.  
-They are essential for data privacy, partial application, and creating function factories.  
-Understanding closures helps avoid common pitfalls with variable mutability and asynchronous code.  
+Explanation:
+A closure is a function that retains access to its lexical environment even after the outer function has finished executing.  
+It allows inner functions to remember and use variables defined in an outer scope.  
+Closures are created every time a function is created, enabling data privacy and function factories.  
+They are essential for patterns such as module pattern, currying, and event handlers.  
+Understanding closures helps avoid common pitfalls with variable scope and asynchronous code.
 
-Code Example:  
-function makeCounter(initial) {                     // outer function creates a private variable  
-    let count = initial;                           // this variable is captured by the inner function  
+Code Example:
+// Outer function creates a private variable and returns an inner function
+function makeCounter() {
+    let count = 0;                     // count is not accessible from outside
+    return function() {
+        count += 1;                    // inner function accesses and updates count
+        console.log('Current count:', count);
+    };
+}
 
-    return function step(increment) {              // inner function forms a closure over count  
-        count += increment;                        // modifies the captured variable  
-        return count;                              // returns the updated value  
-    };                                             // the closure is returned as a callable function  
-}                                                  // end of makeCounter  
+// Create two independent counters using the closure
+const counterA = makeCounter();        // counterA has its own count variable
+const counterB = makeCounter();        // counterB has a separate count variable
 
-const counter = makeCounter(10);                    // counter now has its own private count starting at 10  
-console.log(counter(2));   // 12   // each call updates the private count  
-console.log(counter(5));   // 17   // the state is preserved across calls  
-console.log(counter(-3));  // 14   // closures keep the variable alive even after makeCounter finishes  
+counterA(); // Output: Current count: 1
+counterA(); // Output: Current count: 2
+counterB(); // Output: Current count: 1   (independent from counterA)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with GPT‑4 for Text Classification  
 
 Explanation:  
-- Few‑shot prompting supplies a handful of example input‑output pairs to steer the model toward the desired behavior.  
-- By placing clear, concise demonstrations before the new query, the model learns the pattern without any fine‑tuning.  
-- This technique works well for classification, transformation, or reasoning tasks where a full dataset is unavailable.  
-- The prompt is constructed as a sequence of messages, alternating user and assistant roles, matching the chat API format.  
-- Keeping temperature low (e.g., 0.0) makes the output deterministic, which is important for reproducible classifications.  
+Few‑shot prompting lets a large language model learn a task from only a handful of examples supplied in the prompt, eliminating the need for fine‑tuning. By carefully formatting the prompt – including clear instructions, labeled demonstration pairs, and a delimiter before the new input – the model can infer the desired label mapping. This approach works well for classification tasks where data is scarce or rapidly changing. It also makes it easy to iterate on prompt wording without retraining a model. Using the OpenAI API, you can send the crafted prompt and retrieve the model’s prediction in a single request.
 
-Code example (Python, using the OpenAI API):  
-
+Code example (Python, OpenAI API):  
 import os  
 import openai  
 
-# Load API key from environment variable  
+# Load your OpenAI API key from the environment  
 openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-def classify_sentiment(text):  
-    # Few‑shot examples: user input followed by expected assistant label  
-    examples = [  
-        {"role": "user", "content": "I love this product! It works perfectly."},  
-        {"role": "assistant", "content": "Positive"},  
-        {"role": "user", "content": "The service was terrible and slow."},  
-        {"role": "assistant", "content": "Negative"},  
-    ]  
-    # Append the new query after the examples  
-    messages = examples + [{"role": "user", "content": text}]  
-    # Request completion from the chat model  
-    response = openai.ChatCompletion.create(  
-        model="gpt-3.5-turbo",  
-        messages=messages,  
-        temperature=0.0,   # deterministic output  
-    )  
-    # Return the model’s label (strip whitespace)  
-    return response.choices[0].message.content.strip()  
+# Define a few‑shot prompt for sentiment classification  
+prompt = """You are a helpful assistant that classifies customer feedback as Positive, Negative, or Neutral.  
+Example 1:  
+Feedback: "I love the new features, they are exactly what I needed!"  
+Label: Positive  
 
-# Example usage  
-print(classify_sentiment("The movie had stunning visuals but a weak plot."))   # Expected: Neutral or Mixed, based on examples  
+Example 2:  
+Feedback: "The app crashes whenever I try to upload a photo."  
+Label: Negative  
+
+Example 3:  
+Feedback: "It works fine, nothing special."  
+Label: Neutral  
+
+Now classify the following feedback:  
+Feedback: "The latest update made the interface smoother and faster."  
+Label:"""  
+
+# Call the GPT‑4 model with the prompt  
+response = openai.ChatCompletion.create(  
+    model="gpt-4",  
+    messages=[{"role": "user", "content": prompt}],  
+    temperature=0.0,        # deterministic output  
+    max_tokens=10           # we only need the label  
+)  
+
+# Extract and print the label from the model's reply  
+label = response.choices[0].message.content.strip()  
+print("Predicted label:", label)  
 */
 
