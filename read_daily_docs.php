@@ -1,240 +1,222 @@
 <?php
-// 2026-10-22 06:31:49
+// 2026-10-23 06:25:59
 
 /* PHP
-PHP Generators (Yield)
+PHP PDO Prepared Statements
 
-Generators allow you to create iterators without the overhead of building an entire array in memory.  
-By using the yield keyword, a function can return a value and pause its execution, resuming later.  
-This is especially useful for processing large data sets, streaming files, or handling infinite sequences.  
-Generators improve performance and reduce memory consumption compared to traditional loops that collect all results.  
-They can also be combined with foreach, making iteration syntax seamless and readable.
+Explanation:
+Prepared statements separate SQL code from data, preventing SQL injection attacks. 
+They are compiled once by the database engine, which can improve performance for repeated queries. 
+Placeholders (named or positional) are used in the SQL query and later bound to actual values. 
+PDO supports multiple database drivers, making the code portable across MySQL, PostgreSQL, SQLite, etc. 
+Error handling with exceptions helps to catch and debug issues efficiently. 
 
+Example (MySQL connection and an INSERT using named placeholders):
 <?php
-// Define a generator that yields the first n square numbers
-function squareNumbers(int $n) {
-    for ($i = 1; $i <= $n; $i++) {
-        // Yield the current square and pause execution
-        yield $i => $i * $i;
-    }
-}
+// Enable exceptions for PDO errors
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
 
-// Use the generator in a foreach loop
-foreach (squareNumbers(5) as $index => $square) {
-    // Output each index and its corresponding square
-    echo "Number $index squared is $square\n";
-}
+// Create a new PDO instance (replace credentials as needed)
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
+$pdo = new PDO($dsn, $username, $password, $options);
+
+// Prepare an INSERT statement with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)';
+$stmt = $pdo->prepare($sql);
+
+// Bind values to the placeholders
+$stmt->bindValue(':username', 'alice', PDO::PARAM_STR);
+$stmt->bindValue(':email', 'alice@example.com', PDO::PARAM_STR);
+$stmt->bindValue(':created_at', date('Y-m-d H:i:s'), PDO::PARAM_STR);
+
+// Execute the prepared statement
+$stmt->execute();
+
+// Get the ID of the newly inserted row
+$lastId = $pdo->lastInsertId();
+echo "New user ID: " . $lastId;
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container – Binding and Automatic Resolution  
+Topic: Form Request Validation in Laravel
 
 Explanation:  
-The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. By binding an interface to a concrete class, you tell the container which implementation to provide when the interface is requested. When a class type‑hinted in a controller or another class is resolved, Laravel will automatically inject the appropriate instance. This decouples your code, making it easier to swap implementations or mock dependencies during testing. The container also supports contextual bindings, allowing different implementations for the same interface in different situations.
+Form Request classes encapsulate validation logic, keeping controllers clean and reusable.  
+They are generated with Artisan and automatically authorize the request before validation runs.  
+You define rules as an associative array, and Laravel will redirect back with errors if validation fails.  
+Custom messages and attribute names can be added for more user‑friendly feedback.  
+The validated data can be retrieved via the validated() method, ensuring only approved fields are processed.
 
-Code example (PHP):
+Code example with comments:
 
 <?php
-namespace App\Providers;
+namespace App\Http\Requests;
 
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripeGateway;
-use App\Services\PayPalGateway;
+use Illuminate\Foundation\Http\FormRequest;
 
-class AppServiceProvider extends ServiceProvider
+class StorePostRequest extends FormRequest
 {
-    public function register()
+    // Determine if the user is authorized to make this request.
+    public function authorize()
     {
-        // Simple binding: whenever PaymentGateway is requested, give StripeGateway
-        $this->app->bind(PaymentGateway::class, StripeGateway::class);
+        // Return true to allow all users; adjust for permission checks.
+        return true;
+    }
 
-        // Contextual binding: for OrderController use PayPalGateway instead
-        $this->app->when(\App\Http\Controllers\OrderController::class)
-                  ->needs(PaymentGateway::class)
-                  ->give(PayPalGateway::class);
+    // Define validation rules for the incoming request.
+    public function rules()
+    {
+        return [
+            'title'   => 'required|string|max:255',
+            'body'    => 'required|string',
+            'category'=> 'required|exists:categories,id',
+        ];
+    }
+
+    // Optional: custom error messages.
+    public function messages()
+    {
+        return [
+            'title.required' => 'A title is required for the post.',
+            'body.required'  => 'Please provide the content of the post.',
+        ];
     }
 }
+?>
 
-// Example interface
-namespace App\Contracts;
-
-interface PaymentGateway
-{
-    public function charge(float $amount);
-}
-
-// Stripe implementation
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-
-class StripeGateway implements PaymentGateway
-{
-    public function charge(float $amount)
-    {
-        // Logic to charge via Stripe API
-        return "Charged $$amount with Stripe.";
-    }
-}
-
-// PayPal implementation
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-
-class PayPalGateway implements PaymentGateway
-{
-    public function charge(float $amount)
-    {
-        // Logic to charge via PayPal API
-        return "Charged $$amount with PayPal.";
-    }
-}
-
-// Controller demonstrating automatic injection
+<?php
 namespace App\Http\Controllers;
 
-use App\Contracts\PaymentGateway;
+use App\Http\Requests\StorePostRequest;
+use App\Models\Post;
 
-class OrderController extends Controller
+class PostController extends Controller
 {
-    protected $gateway;
-
-    // Laravel injects the appropriate PaymentGateway implementation
-    public function __construct(PaymentGateway $gateway)
+    // Store a new blog post using the Form Request for validation.
+    public function store(StorePostRequest $request)
     {
-        $this->gateway = $gateway;
-    }
+        // The request has already been validated at this point.
+        $validatedData = $request->validated();
 
-    public function store()
-    {
-        $result = $this->gateway->charge(99.99);
-        return response()->json(['message' => $result]);
+        // Create the post using only the validated fields.
+        $post = Post::create($validatedData);
+
+        // Redirect or return response.
+        return redirect()->route('posts.show', $post);
     }
 }
 ?>
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures with IN, OUT, and INOUT Parameters  
+Topic: Recursive Common Table Expressions (CTE) in MySQL
 
-Explanation:  
-Stored procedures let you group multiple SQL statements so they can be executed as a single unit, improving performance and maintainability.  
-Parameters can be defined as IN (input only), OUT (output only), or INOUT (both input and output), allowing data to be passed to and returned from the procedure.  
-Using parameters makes procedures reusable for different inputs without rewriting the logic each time.  
-Procedures can contain control‑flow statements such as IF, LOOP, and CASE to implement complex business rules.  
-When a procedure finishes, any OUT or INOUT parameters are sent back to the caller, enabling result communication without result sets.  
+Explanation:
+A recursive CTE allows you to query hierarchical or tree‑structured data by defining a query that references itself.  
+It consists of two parts: the anchor member that provides the starting rows, and the recursive member that builds on those rows.  
+MySQL evaluates the CTE repeatedly, appending results until the recursive member returns no new rows.  
+This technique is useful for organizational charts, category trees, bill‑of‑materials, or any data with parent‑child relationships.  
+The syntax is straightforward, but you must include a LIMIT or a termination condition to avoid infinite loops.
 
-Code example (with comments):  
-
--- Drop the procedure if it already exists to avoid errors  
-DROP PROCEDURE IF EXISTS GetEmployeeStats;  
-
--- Create a new procedure that receives a department ID (IN) and returns the total salary (OUT) and average age (INOUT)  
-CREATE PROCEDURE GetEmployeeStats(  
-    IN dept_id INT,                -- input: department to analyze  
-    OUT total_salary DECIMAL(10,2),-- output: sum of salaries in the department  
-    INOUT avg_age DECIMAL(5,2)    -- input/output: initial average age (can be used as a starting value)  
-)  
-BEGIN  
-    -- Compute total salary for the given department and store it in the OUT parameter  
-    SELECT SUM(salary) INTO total_salary  
-    FROM employees  
-    WHERE department_id = dept_id;  
-
-    -- Compute average age; if the caller supplied a non‑NULL value, use it as a weighted contribution  
-    IF avg_age IS NULL THEN  
-        SELECT AVG(age) INTO avg_age  
-        FROM employees  
-        WHERE department_id = dept_id;  
-    ELSE  
-        SELECT ( (avg_age * 1) + AVG(age) ) / 2 INTO avg_age   -- simple averaging with caller's value  
-        FROM employees  
-        WHERE department_id = dept_id;  
-    END IF;  
-END;  
-
--- Example call: retrieve stats for department 3, capture output values in session variables  
-SET @total = 0;  
-SET @average = NULL;  
-CALL GetEmployeeStats(3, @total, @average);  
-
--- Display the results returned via OUT/INOUT parameters  
-SELECT @total AS TotalSalary, @average AS AverageAge;  
+Code example (with inline comments):
+WITH RECURSIVE employee_hierarchy AS (   -- start of the CTE definition
+    SELECT employee_id, manager_id, employee_name, 1 AS level   -- anchor member: top‑level employees
+    FROM employees
+    WHERE manager_id IS NULL                                 -- top of the hierarchy
+    UNION ALL
+    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1   -- recursive member: add subordinates
+    FROM employees e
+    JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id
+)
+SELECT employee_id, manager_id, employee_name, level
+FROM employee_hierarchy
+ORDER BY level, manager_id;   -- final query returns the full hierarchy ordered by level.
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: Event Loop, Call Stack, and Task Queues  
 
-Explanation:
-A closure is a function that retains access to its lexical environment even after the outer function has finished executing.  
-It allows inner functions to remember and use variables defined in an outer scope.  
-Closures are created every time a function is created, enabling data privacy and function factories.  
-They are essential for patterns such as module pattern, currying, and event handlers.  
-Understanding closures helps avoid common pitfalls with variable scope and asynchronous code.
+Explanation:  
+The JavaScript runtime uses a single‑threaded call stack to execute code line by line.  
+When asynchronous operations (like promises, timers, or I/O) complete, their callbacks are placed in task queues.  
+The event loop continuously checks the call stack; if it is empty, it pulls the next callback from the microtask queue (promises) first, then from the macrotask queue (setTimeout, I/O).  
+Understanding this order is crucial for predicting when side effects occur and for avoiding race conditions.  
+Microtasks run before the next rendering phase, while macrotasks run after, which influences UI updates and performance.  
 
-Code Example:
-// Outer function creates a private variable and returns an inner function
-function makeCounter() {
-    let count = 0;                     // count is not accessible from outside
-    return function() {
-        count += 1;                    // inner function accesses and updates count
-        console.log('Current count:', count);
-    };
-}
+Code example (with comments):
 
-// Create two independent counters using the closure
-const counterA = makeCounter();        // counterA has its own count variable
-const counterB = makeCounter();        // counterB has a separate count variable
+// A simple promise resolves immediately
+const promise = Promise.resolve('Promise result');
 
-counterA(); // Output: Current count: 1
-counterA(); // Output: Current count: 2
-counterB(); // Output: Current count: 1   (independent from counterA)
+// A setTimeout with 0 ms delay (macrotask)
+setTimeout(() => {
+    console.log('Timeout callback'); // runs after microtasks
+}, 0);
+
+// Microtask added by .then()
+promise.then(value => {
+    console.log(value); // runs before the timeout callback
+});
+
+// Synchronous log to show immediate execution
+console.log('Synchronous log');
+
+// Expected output order:
+// Synchronous log
+// Promise result
+// Timeout callback   (because the microtask from the promise runs before the macrotask)  
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with GPT‑4 for Text Classification  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting lets a large language model learn a task from only a handful of examples supplied in the prompt, eliminating the need for fine‑tuning. By carefully formatting the prompt – including clear instructions, labeled demonstration pairs, and a delimiter before the new input – the model can infer the desired label mapping. This approach works well for classification tasks where data is scarce or rapidly changing. It also makes it easy to iterate on prompt wording without retraining a model. Using the OpenAI API, you can send the crafted prompt and retrieve the model’s prediction in a single request.
+Few‑shot prompting lets you give the model a handful of input‑output examples inside the prompt, teaching it the desired pattern without fine‑tuning. By carefully formatting the examples and separating them with clear delimiters, the model can infer the task and apply it to new inputs. This technique works well for classification, transformation, or extraction tasks where a full dataset for training is unavailable. The prompt should include a brief instruction, several labeled examples, and a final “User:” line for the unseen query. Adjusting temperature and max tokens helps balance creativity and deterministic output.
 
-Code example (Python, OpenAI API):  
+Code example (Python, using the openai library):  
+
 import os  
 import openai  
 
-# Load your OpenAI API key from the environment  
+# Load your OpenAI API key from an environment variable  
 openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define a few‑shot prompt for sentiment classification  
-prompt = """You are a helpful assistant that classifies customer feedback as Positive, Negative, or Neutral.  
-Example 1:  
-Feedback: "I love the new features, they are exactly what I needed!"  
-Label: Positive  
+def few_shot_completion(user_query):  
+    # Construct a prompt that contains the task description and three examples  
+    prompt = (  
+        "You are a helpful assistant that extracts the city name from a travel sentence.\n\n"  
+        "Example 1:\n"  
+        "User: I will be flying to Paris next week.\n"  
+        "Assistant: Paris\n\n"  
+        "Example 2:\n"  
+        "User: My next vacation is planned for Tokyo.\n"  
+        "Assistant: Tokyo\n\n"  
+        "Example 3:\n"  
+        "User: Can you tell me where the conference is held? It's in Berlin.\n"  
+        "Assistant: Berlin\n\n"  
+        f"User: {user_query}\n"  
+        "Assistant:"  
+    )  
 
-Example 2:  
-Feedback: "The app crashes whenever I try to upload a photo."  
-Label: Negative  
+    response = openai.ChatCompletion.create(  
+        model="gpt-4o-mini",  
+        messages=[{"role": "user", "content": prompt}],  
+        temperature=0.0,          # deterministic output for extraction tasks  
+        max_tokens=10,            # we only need a short answer  
+        top_p=1.0,                # use full probability mass  
+    )  
 
-Example 3:  
-Feedback: "It works fine, nothing special."  
-Label: Neutral  
+    # The model’s answer is in the first choice’s message content  
+    answer = response.choices[0].message.content.strip()  
+    return answer  
 
-Now classify the following feedback:  
-Feedback: "The latest update made the interface smoother and faster."  
-Label:"""  
-
-# Call the GPT‑4 model with the prompt  
-response = openai.ChatCompletion.create(  
-    model="gpt-4",  
-    messages=[{"role": "user", "content": prompt}],  
-    temperature=0.0,        # deterministic output  
-    max_tokens=10           # we only need the label  
-)  
-
-# Extract and print the label from the model's reply  
-label = response.choices[0].message.content.strip()  
-print("Predicted label:", label)  
+# Example usage  
+print(few_shot_completion("I just booked a flight to Sydney for the holidays."))   # Expected: Sydney  
 */
 
