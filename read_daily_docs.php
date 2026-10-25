@@ -1,279 +1,216 @@
 <?php
-// 2026-10-24 06:22:59
+// 2026-10-25 06:42:55
 
 /* PHP
-PHP PDO Prepared Statements
+Topic: PHP PDO Prepared Statements  
 
 Explanation:  
-Prepared statements separate the SQL query structure from the data values, which improves security by preventing SQL injection attacks. The query is sent to the database server and compiled once, then executed multiple times with different parameters. PDO (PHP Data Objects) provides a consistent interface for prepared statements across many database systems. Binding parameters can be done by position or by name, offering flexibility in how data is supplied. Using prepared statements also often yields better performance for repeated queries.
+PDO (PHP Data Objects) provides a uniform interface for accessing different databases. Using prepared statements with PDO separates SQL code from the data, which prevents SQL injection attacks. The statement is parsed and compiled by the database once, then can be executed multiple times with different parameters, improving performance. Parameters are bound using named or positional placeholders, and PDO automatically handles data type conversion. Errors can be managed through exceptions for more robust error handling.  
 
-Code example:
-// Connect to the database using PDO
+Code example (with comments):  
+
+<?php
+// Create a new PDO instance connecting to a MySQL database
 $dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
 $username = 'dbuser';
 $password = 'dbpass';
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch rows as associative arrays
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch associative arrays
 ];
 $pdo = new PDO($dsn, $username, $password, $options);
 
 // Prepare an INSERT statement with named placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)';
 $stmt = $pdo->prepare($sql);
 
-// Bind values to the placeholders and execute
+// Bind values to the placeholders
+$stmt->bindValue(':username', 'alice');
+$stmt->bindValue(':email', 'alice@example.com');
+$stmt->bindValue(':created_at', date('Y-m-d H:i:s'));
+
+// Execute the statement
+$stmt->execute();
+
+// To retrieve the ID of the newly inserted row
+$newUserId = $pdo->lastInsertId();
+echo "New user inserted with ID: $newUserId\n";
+
+// Example of executing the same prepared statement with different data
 $users = [
-    ['username' => 'alice', 'email' => 'alice@example.com'],
-    ['username' => 'bob',   'email' => 'bob@example.com']
+    ['bob', 'bob@example.com'],
+    ['carol', 'carol@example.com'],
 ];
 foreach ($users as $user) {
-    $stmt->bindParam(':username', $user['username']);
-    $stmt->bindParam(':email',    $user['email']);
-    $stmt->execute(); // Executes the prepared statement with the current bound values
+    $stmt->execute([
+        ':username'   => $user[0],
+        ':email'      => $user[1],
+        ':created_at' => date('Y-m-d H:i:s')
+    ]);
 }
-
-// Retrieve the inserted rows using a prepared SELECT statement
-$selectSql = 'SELECT id, username, email FROM users WHERE email = :email';
-$selectStmt = $pdo->prepare($selectSql);
-$selectStmt->execute([':email' => 'alice@example.com']);
-$alice = $selectStmt->fetch(); // Fetches the row for Alice
-
-// Output the result
-echo 'User ID: ' . $alice['id'] . PHP_EOL;
-echo 'Username: ' . $alice['username'] . PHP_EOL;
-echo 'Email: ' . $alice['email'] . PHP_EOL;
+?>
 */
 
 /* Laravel
-Topic: Route Model Binding in Laravel  
+Laravel Service Container and Automatic Dependency Injection
 
-Explanation:  
-Laravel’s route model binding automatically injects model instances into your routes based on the route parameters.  
-When a route contains a placeholder that matches a model’s primary key, Laravel resolves the corresponding record.  
-If the record is not found, a 404 response is generated without additional code.  
-Both implicit and explicit binding are supported; implicit works by type‑hinting the model in the controller method.  
-Explicit binding allows you to customize the key used for lookup or bind a closure for complex resolution.  
+The service container is the heart of Laravel’s inversion of control system, managing class dependencies and performing dependency injection. It allows you to bind abstractions to concrete implementations, making your code loosely coupled and easier to test. When a class is resolved, the container automatically injects its dependencies based on type hints. This mechanism works for controllers, event listeners, middleware, and any class you resolve manually. Understanding the container enables you to customize bindings, use contextual bindings, and leverage singleton instances throughout your application.
 
-Code Example:  
+<?php
+namespace App\Http\Controllers;
 
-<?php  
+use App\Services\PaymentGatewayInterface;
+use Illuminate\Http\Request;
 
-use App\Http\Controllers\PostController;  
-use App\Models\Post;  
-use Illuminate\Support\Facades\Route;  
+class OrderController extends Controller
+{
+    // The PaymentGatewayInterface will be automatically injected by the service container
+    protected $paymentGateway;
 
-// Implicit binding – Laravel will resolve {post} to a Post model instance by ID  
-Route::get('posts/{post}', [PostController::class, 'show']);  
+    // Constructor type‑hint triggers automatic resolution of the concrete class bound to the interface
+    public function __construct(PaymentGatewayInterface $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
 
-// Explicit binding – use a custom key such as slug instead of the default ID  
-Route::bind('post_slug', function ($value) {  
-    // Return the Post model where the slug column matches the route value  
-    return Post::where('slug', $value)->firstOrFail();  
-});  
+    // Example action that uses the injected service
+    public function store(Request $request)
+    {
+        $orderData = $request->all();
 
-// Route using the explicit binding key  
-Route::get('posts/slug/{post_slug}', [PostController::class, 'showBySlug']);  
+        // Use the payment gateway to process the payment
+        $result = $this->paymentGateway->charge($orderData['amount']);
 
-// PostController.php  
-namespace App\Http\Controllers;  
+        // Return a JSON response based on the result
+        return response()->json([
+            'status'  => $result ? 'success' : 'failure',
+            'message' => $result ? 'Payment processed.' : 'Payment failed.'
+        ]);
+    }
+}
 
-use App\Models\Post;  
+// Service provider where the interface is bound to a concrete implementation
+namespace App\Providers;
 
-class PostController extends Controller  
-{  
-    // Method for implicit binding – $post is already a Post instance  
-    public function show(Post $post)  
-    {  
-        // Return or render the post data  
-        return response()->json($post);  
-    }  
+use App\Services\PaymentGatewayInterface;
+use App\Services\StripePaymentGateway;
+use Illuminate\Support\ServiceProvider;
 
-    // Method for explicit binding – parameter name matches the binding key  
-    public function showBySlug(Post $post_slug)  
-    {  
-        // $post_slug is actually a Post model resolved by slug  
-        return response()->json($post_slug);  
-    }  
-}  
+class AppServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind the interface to the Stripe implementation; the container will inject StripePaymentGateway wherever PaymentGatewayInterface is requested
+        $this->app->bind(PaymentGatewayInterface::class, StripePaymentGateway::class);
+    }
+}
 
-// App\Models\Post.php (simplified)  
-namespace App\Models;  
+// Concrete implementation of the payment gateway
+namespace App\Services;
 
-use Illuminate\Database\Eloquent\Model;  
+class StripePaymentGateway implements PaymentGatewayInterface
+{
+    public function charge($amount)
+    {
+        // Here you would interact with Stripe's SDK; returning true for illustration
+        return true;
+    }
+}
 
-class Post extends Model  
-{  
-    // If you want to use slug as the route key globally, override getRouteKeyName  
-    public function getRouteKeyName()  
-    {  
-        return 'slug'; // Now implicit binding will use slug instead of ID  
-    }  
-}  
+// The interface defining the contract for payment gateways
+namespace App\Services;
+
+interface PaymentGatewayInterface
+{
+    public function charge($amount);
+}
 */
 
 /* MySQL
-Topic: MySQL Common Table Expressions (CTE) and Recursive Queries
+Topic: Common Table Expressions (CTE) and Recursive Queries
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and can improve readability by breaking complex queries into logical parts. MySQL 8.0+ supports both non‑recursive and recursive CTEs, the latter allowing you to traverse hierarchical data such as organizational charts or tree structures. Recursive CTEs consist of an anchor member that provides the initial rows and a recursive member that repeatedly references the CTE itself until no new rows are produced. They are particularly useful for queries that would otherwise require procedural loops or multiple self‑joins.  
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and improve query readability by allowing you to break complex logic into named subqueries.  
+When the WITH keyword is followed by RECURSIVE, the CTE can call itself, enabling hierarchical or tree‑structured data traversal.  
+Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly references the CTE until a termination condition is met.  
+They are useful for tasks such as generating number series, traversing organizational charts, or processing bill‑of‑materials structures.
 
-Code example with comments:
+Code example (MySQL 8.0+):
 
--- Create a sample table to store an employee hierarchy
-CREATE TABLE employees (
-    emp_id INT PRIMARY KEY,
-    emp_name VARCHAR(50) NOT NULL,
-    manager_id INT NULL,          -- NULL for top‑level manager (CEO)
-    FOREIGN KEY (manager_id) REFERENCES employees(emp_id)
-);
-
--- Insert sample data
-INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
-(1, 'Alice', NULL),      -- CEO
-(2, 'Bob', 1),           -- reports to Alice
-(3, 'Carol', 1),         -- reports to Alice
-(4, 'David', 2),         -- reports to Bob
-(5, 'Eve', 2),           -- reports to Bob
-(6, 'Frank', 3);         -- reports to Carol
-
--- Recursive CTE to list all subordinates of a given manager (e.g., manager_id = 1)
-WITH RECURSIVE subordinates AS (
-    -- Anchor member: start with the direct reports of the manager
-    SELECT emp_id, emp_name, manager_id, 1 AS level
-    FROM employees
-    WHERE manager_id = 1
+WITH RECURSIVE Numbers AS (                              -- Define the CTE named Numbers
+    SELECT 1 AS n                                         -- Anchor member: start with 1
     UNION ALL
-    -- Recursive member: find employees whose manager is in the previous level
-    SELECT e.emp_id, e.emp_name, e.manager_id, s.level + 1
-    FROM employees e
-    INNER JOIN subordinates s ON e.manager_id = s.emp_id
+    SELECT n + 1                                          -- Recursive member: add 1 to the previous value
+    FROM Numbers
+    WHERE n < 10                                          -- Termination condition: stop at 10
 )
-SELECT emp_id, emp_name, manager_id, level
-FROM subordinates
-ORDER BY level, emp_id;
-
--- The query returns:
--- emp_id | emp_name | manager_id | level
---   2    |   Bob    |     1      |  1
---   3    |  Carol   |     1      |  1
---   4    |  David   |     2      |  2
---   5    |   Eve    |     2      |  2
---   6    |  Frank   |     3      |  2
-
--- This CTE walks the hierarchy starting from the CEO (manager_id = 1) and lists each subordinate with their depth level.
+SELECT n                                                -- Use the CTE in a query
+FROM Numbers
+ORDER BY n;                                               -- Result: 1 through 10 displayed in order
 */
 
 /* JavaScript
-Topic: Asynchronous Iterators and the for‑await‑of Loop
+Topic: Closures in JavaScript
 
 Explanation:  
-An asynchronous iterator produces values that may become available at different times, such as data from a network request or a file stream. It implements a `next()` method that returns a promise resolving to an object with `value` and `done` properties. By defining `[Symbol.asyncIterator]` on an object, you enable it to be consumed with the `for‑await‑of` syntax, which pauses the loop until each promise resolves. This pattern is useful for processing streams, paginated APIs, or any source where data arrives incrementally. Unlike regular iterators, asynchronous iterators keep the code non‑blocking while preserving a simple sequential style.
+A closure is created when an inner function accesses variables from an outer function that has already finished executing. The inner function retains a reference to the outer scope’s variables, preserving their values across calls. Closures enable data privacy, allowing you to expose only selected functionality while keeping internal state hidden. They are fundamental for patterns like module creation, function factories, and partial application. Understanding closures helps avoid common pitfalls such as unintended memory retention or variable sharing in loops.
 
-Code example:
-```javascript
-// Simulated async data source that yields numbers with a delay
-function createAsyncNumberGenerator(limit) {
-  let count = 1;
-  return {
-    // Define the async iterator protocol
-    [Symbol.asyncIterator]() {
-      return this;
-    },
-    // Each call returns a promise that resolves after 500 ms
-    async next() {
-      if (count > limit) {
-        return { done: true };                     // Signal completion
-      }
-      // Wait half a second before delivering the next value
-      await new Promise(res => setTimeout(res, 500));
-      return { value: count++, done: false };      // Provide next number
-    }
-  };
-}
+Code example:  
+function makeCounter(initial) {                     // outer function receives an initial value  
+    let count = initial;                           // this variable is captured by the inner function  
 
-// Consume the async iterator using for‑await‑of
-(async () => {
-  for await (const num of createAsyncNumberGenerator(5)) {
-    console.log('Received:', num);                // Logs 1 … 5 at 0.5 s intervals
-  }
-  console.log('All numbers processed');
-})();
-```
+    return function() {                            // the inner function forms the closure  
+        count += 1;                                 // modifies the captured variable  
+        return count;                               // returns the updated count  
+    };  
+}  
+
+const counterA = makeCounter(0);                    // creates a new closure with its own count  
+console.log(counterA()); // 1  
+console.log(counterA()); // 2  
+
+const counterB = makeCounter(10);                   // separate closure, independent count  
+console.log(counterB()); // 11  
+console.log(counterA()); // 3   // counterA’s count continues where it left off  
 */
 
 /* AI
-Topic Name: Fine‑Tuning a Code Generation Model with Hugging Face Transformers  
+Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
 
 Explanation:  
-Fine‑tuning a pre‑trained transformer (e.g., CodeGen, GPT‑Neo) on a domain‑specific code corpus can improve its ability to generate correct, idiomatic code for that domain. The process involves loading the base model, preparing paired prompt‑completion examples, and training with a small learning rate to preserve the model’s general knowledge. Using the 🤗 Accelerate library simplifies multi‑GPU or mixed‑precision training. After training, the model can be saved and served via the Hugging Face Inference API for real‑time code suggestions. This workflow is lightweight enough to run on a single GPU workstation.  
+Few‑shot prompting provides the model with a handful of example input‑output pairs before the real query, guiding its behavior without changing the underlying model. By embedding concise demonstrations directly in the prompt, you can steer the assistant toward a specific style, format, or domain knowledge. This technique works well for tasks like data extraction, code generation, or tone‑controlled writing. The examples should be clear, varied enough to cover edge cases, and as short as possible to stay within token limits. Adjust the number of shots and their content based on performance and cost considerations.  
 
-Code Example:  
+Code example (Python, using the openai library):  
+
 import os  
-from datasets import load_dataset  
-from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments  
+import openai  
 
-# Load a small public code dataset (e.g., python‑code‑alpaca)  
-dataset = load_dataset("tatsu-lab/alpaca", split="train")  
-# Keep only examples that contain Python code in the instruction field  
-def filter_python(example):  
-    return "python" in example["instruction"].lower()  
-dataset = dataset.filter(filter_python)  
+# Load your OpenAI API key from an environment variable  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Initialize tokenizer and model from a code‑focused checkpoint  
-model_name = "bigcode/starcoderbase-1b"  
-tokenizer = AutoTokenizer.from_pretrained(model_name)  
-model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto")  
+# Define a few‑shot prompt: two examples of extracting titles from article snippets  
+few_shot_prompt = """\
+Extract the title from each article summary.
 
-# Tokenize the prompt‑completion pairs  
-def tokenize_fn(example):  
-    # Concatenate instruction and response with a separator token  
-    prompt = f"{example['instruction']}\n\n{example['input']}" if example['input'] else example['instruction']  
-    full_text = f"{prompt}\n\n{example['output']}"  
-    tokenized = tokenizer(full_text, truncation=True, max_length=1024)  
-    tokenized["labels"] = tokenized["input_ids"].copy()  # supervised loss uses same IDs as targets  
-    return tokenized  
+Summary: "In a breakthrough study, scientists discovered a new method to recycle plastic using enzymes."
+Title: "Enzyme‑Based Plastic Recycling Breakthrough"
 
-tokenized_dataset = dataset.map(tokenize_fn, remove_columns=dataset.column_names)  
+Summary: "The city council voted to increase funding for public parks and green spaces."
+Title: "Council Approves Boost to Park Funding"
 
-# Set up training arguments – modest settings for a single GPU  
-training_args = TrainingArguments(  
-    output_dir="./fine_tuned_codegen",  
-    per_device_train_batch_size=2,  
-    gradient_accumulation_steps=4,  
-    num_train_epochs=3,  
-    learning_rate=5e-5,  
-    fp16=True,               # mixed precision for speed  
-    logging_steps=50,  
-    save_steps=500,  
-    evaluation_strategy="no",  
+Now extract the title for the following summary:
+Summary: "Researchers have developed an AI model that can predict protein folding with unprecedented accuracy."
+Title:"""  
+
+response = openai.ChatCompletion.create(  
+    model="gpt-4o-mini",  
+    messages=[{"role": "user", "content": few_shot_prompt}],  
+    temperature=0.0,            # deterministic output for extraction tasks  
+    max_tokens=50               # limit to the short title  
 )  
 
-# Create Trainer instance  
-trainer = Trainer(  
-    model=model,  
-    args=training_args,  
-    train_dataset=tokenized_dataset,  
-)  
-
-# Start fine‑tuning  
-trainer.train()  
-
-# Save the fine‑tuned model for later inference  
-trainer.save_model("./fine_tuned_codegen")  
-
-# Example inference – generate code from a new prompt  
-def generate_code(prompt_text):  
-    input_ids = tokenizer(prompt_text, return_tensors="pt").input_ids.to(model.device)  
-    output_ids = model.generate(  
-        input_ids,  
-        max_new_tokens=150,  
-        temperature=0.7,  
-        do_sample=True,  
-        pad_token_id=tokenizer.eos_token_id,  
-    )  
-    return tokenizer.decode(output_ids[0], skip_special_tokens=True)  
-
-print(generate_code("Write a Python function that computes the nth Fibonacci number using memoization."))
+# Print the model's answer (the extracted title)  
+print(response.choices[0].message.content.strip())   # Expected: "AI Model Predicts Protein Folding with Unprecedented Accuracy"  
 */
 
