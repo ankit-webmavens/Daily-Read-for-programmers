@@ -1,212 +1,234 @@
 <?php
-// 2026-10-26 06:52:00
+// 2026-10-27 06:46:39
 
 /* PHP
-Topic: PDO Prepared Statements  
+Topic: PHP Data Objects (PDO) – Secure Database Interaction  
 
 Explanation:  
-PDO (PHP Data Objects) provides a consistent interface for accessing databases and helps prevent SQL injection through prepared statements.  
-A prepared statement separates the SQL query structure from its data values, allowing the database to compile the query once and reuse it safely.  
-Placeholders (named or positional) are used in the SQL string and later bound to actual values before execution.  
-This approach improves performance for repeated queries and ensures proper escaping of input data.  
-Using PDO also makes it easy to switch between different database drivers with minimal code changes.  
+PHP Data Objects (PDO) provide a uniform interface for accessing many different databases using the same functions.  
+It supports prepared statements, which separate SQL code from data and protect against SQL injection attacks.  
+PDO allows you to bind parameters with specific data types, improving both security and performance.  
+Error handling can be set to throw exceptions, making debugging and logging more systematic.  
+The same PDO API works with MySQL, PostgreSQL, SQLite, and many other databases, simplifying code maintenance.
 
-Code example:  
-<?php  
-// Create a new PDO instance (replace DSN, username, and password as needed)  
-$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass');  
+Code example (with comments):
 
-// Enable exceptions for error handling  
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);  
+<?php
+// DSN (Data Source Name) specifies the driver, host, database name, and charset
+$dsn = 'mysql:host=localhost;dbname=sample_db;charset=utf8mb4';
 
-// Prepare an INSERT statement with named placeholders  
-$stmt = $pdo->prepare('INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)');  
+// Database credentials
+$username = 'db_user';
+$password = 'secure_password';
 
-// Bind values to the placeholders; this automatically handles proper escaping  
-$stmt->bindValue(':username', 'alice');  
-$stmt->bindValue(':email', 'alice@example.com');  
-$stmt->bindValue(':created_at', date('Y-m-d H:i:s'));  
+try {
+    // Create a new PDO instance with exception mode enabled
+    $pdo = new PDO($dsn, $username, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,      // Throw exceptions on errors
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Return rows as associative arrays
+    ]);
 
-// Execute the prepared statement  
-$stmt->execute();  
+    // Prepare an SQL statement with named placeholders
+    $stmt = $pdo->prepare('SELECT id, name, email FROM users WHERE status = :status');
 
-// Fetch the ID of the newly inserted row  
-$lastId = $pdo->lastInsertId();  
-echo "New user ID: " . $lastId;  
+    // Bind the value to the placeholder; PDO will handle proper escaping
+    $stmt->bindValue(':status', 'active', PDO::PARAM_STR);
+
+    // Execute the prepared statement
+    $stmt->execute();
+
+    // Fetch all matching rows
+    $users = $stmt->fetchAll();
+
+    // Iterate and display the results
+    foreach ($users as $user) {
+        echo "ID: {$user['id']} - Name: {$user['name']} - Email: {$user['email']}\n";
+    }
+} catch (PDOException $e) {
+    // Handle connection or query errors
+    error_log('Database error: ' . $e->getMessage());
+    echo "An error occurred while accessing the database.\n";
+}
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container & Automatic Dependency Injection
+Laravel Topic: Eloquent Mutators and Accessors  
 
 Explanation:  
-The Service Container is Laravel’s powerful tool for managing class dependencies and performing dependency injection. It resolves objects automatically, allowing you to type‑hint classes in controller constructors or method signatures without manually instantiating them. When the container sees a class name, it checks its constructor for further dependencies and resolves those recursively. You can also bind interfaces to concrete implementations, enabling flexible swapping of services. This mechanism keeps your code loosely coupled and simplifies testing by allowing mock implementations to be injected.
+Mutators allow you to modify attribute values before they are saved to the database, while accessors let you format attribute values when they are retrieved from a model. They are defined as methods on the model using the setAttributeNameAttribute and getAttributeNameAttribute naming conventions. Mutators are useful for tasks like hashing passwords, formatting dates, or storing JSON data consistently. Accessors help present data in a more readable form, such as converting timestamps to human‑readable strings or combining first and last names into a full name. Both features keep your data transformation logic encapsulated within the model, promoting cleaner controllers and services.
 
-Code example (app/Http/Controllers/ReportController.php):
+Code Example (User model with a password mutator and a full_name accessor):
+
 <?php
-namespace App\Http\Controllers;
+namespace App\Models;
 
-use App\Services\ReportGenerator;          // Interface or abstract class
-use Illuminate\Http\Request;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Facades\Hash;
 
-class ReportController extends Controller
+class User extends Authenticatable
 {
-    protected $reportGenerator;
+    // Define fillable attributes
+    protected $fillable = ['first_name', 'last_name', 'email', 'password'];
 
-    // The container automatically injects an implementation of ReportGenerator
-    public function __construct(ReportGenerator $reportGenerator)
+    // Mutator: automatically hash the password when it is set
+    public function setPasswordAttribute($value)
     {
-        $this->reportGenerator = $reportGenerator;   // Assigned for later use
+        // Only hash if the value is not already hashed
+        if (!Hash::needsRehash($value)) {
+            $value = Hash::make($value);
+        }
+        $this->attributes['password'] = $value;
     }
 
-    // Action that generates a report
-    public function generate(Request $request)
+    // Accessor: combine first_name and last_name into a full_name attribute
+    public function getFullNameAttribute()
     {
-        $type = $request->input('type', 'sales');    // Default to 'sales' report
-        $data = $this->reportGenerator->make($type); // Calls the concrete service
-        return response()->json(['report' => $data]);
+        return trim("{$this->first_name} {$this->last_name}");
     }
 }
-?>
 
-Binding example (app/Providers/AppServiceProvider.php):
-<?php
-namespace App\Providers;
+// Usage in a controller or service
+$user = new \App\Models\User();
+$user->first_name = 'Jane';
+$user->last_name = 'Doe';
+$user->email = 'jane@example.com';
+$user->password = 'secret123';   // Mutator hashes this automatically
+$user->save();
 
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\ReportGenerator as ReportGeneratorContract;
-use App\Services\PdfReportGenerator;          // Concrete implementation
-
-class AppServiceProvider extends ServiceProvider
-{
-    public function register()
-    {
-        // Bind the contract to the concrete class in the container
-        $this->app->bind(
-            ReportGeneratorContract::class,
-            PdfReportGenerator::class
-        );
-    }
-}
-?>
-
-Concrete implementation (app/Services/PdfReportGenerator.php):
-<?php
-namespace App\Services;
-
-use App\Contracts\ReportGenerator;
-
-class PdfReportGenerator implements ReportGenerator
-{
-    // Generates a PDF report based on the requested type
-    public function make(string $type): array
-    {
-        // Placeholder logic – in reality you’d build a PDF and return its path or data
-        return [
-            'type' => $type,
-            'format' => 'PDF',
-            'generated_at' => now()->toDateTimeString()
-        ];
-    }
-}
+// Access the computed full_name attribute
+echo $user->full_name;   // Outputs: Jane Doe
 ?>
 */
 
 /* MySQL
-Topic: Recursive Common Table Expressions (CTEs) in MySQL  
+Topic: Recursive Common Table Expressions (CTEs) in MySQL 8+
 
-Explanation:  
-A recursive CTE allows you to query hierarchical or tree‑structured data by repeatedly applying a query to its own result set. It consists of an anchor member that provides the starting rows and a recursive member that references the CTE name to generate subsequent levels. MySQL 8.0+ supports the WITH RECURSIVE clause, enabling tasks such as traversing organization charts, bill‑of‑materials, or adjacency lists. The recursion stops automatically when the recursive member returns an empty result set, preventing infinite loops. Proper indexing on the key columns can improve performance of recursive queries.
+Explanation:
+- Recursive CTEs allow you to query hierarchical or tree‑structured data without needing procedural loops.
+- They consist of an anchor query (the base case) and a recursive query that references the CTE itself.
+- MySQL evaluates the anchor first, then repeatedly executes the recursive part, appending rows until no new rows are produced.
+- Useful for traversing organization charts, category trees, bill‑of‑materials, or generating number sequences.
+- Performance can be tuned by limiting recursion depth with the MAXRECURSION option or by adding appropriate WHERE clauses.
 
-Code example (with inline comments):
-WITH RECURSIVE OrgChart AS (                -- define the recursive CTE named OrgChart
-    SELECT employee_id, manager_id, 1 AS level   -- anchor member: start with top‑level employees
+Code example (finding all descendants of a manager in an employee table):
+
+-- Sample employee table: id, name, manager_id (NULL for top‑level boss)
+CREATE TABLE employees (
+    id INT PRIMARY KEY,
+    name VARCHAR(50),
+    manager_id INT NULL,
+    FOREIGN KEY (manager_id) REFERENCES employees(id)
+);
+
+-- Insert sample data
+INSERT INTO employees (id, name, manager_id) VALUES
+(1, 'Alice', NULL),   -- CEO
+(2, 'Bob', 1),        -- reports to Alice
+(3, 'Carol', 1),      -- reports to Alice
+(4, 'Dave', 2),       -- reports to Bob
+(5, 'Eve', 2),        -- reports to Bob
+(6, 'Frank', 4);      -- reports to Dave
+
+-- Recursive CTE to list the entire reporting chain under a given manager (e.g., manager_id = 2)
+WITH RECURSIVE subordinates AS (
+    -- Anchor: start with the direct reports of the chosen manager
+    SELECT id, name, manager_id, 1 AS depth
     FROM employees
-    WHERE manager_id IS NULL                     -- top of the hierarchy has no manager
+    WHERE manager_id = 2
+
     UNION ALL
-    SELECT e.employee_id, e.manager_id, oc.level + 1   -- recursive member: join children to parents
+
+    -- Recursive part: find employees whose manager is already in the result set
+    SELECT e.id, e.name, e.manager_id, s.depth + 1
     FROM employees e
-    JOIN OrgChart oc ON e.manager_id = oc.employee_id   -- link each employee to its manager
+    INNER JOIN subordinates s ON e.manager_id = s.id
 )
-SELECT employee_id, manager_id, level
-FROM OrgChart
-ORDER BY level, manager_id;                 -- result shows each employee with its depth in the hierarchy  
+SELECT id, name, manager_id, depth
+FROM subordinates
+ORDER BY depth, id;
+
+-- The result shows Bob's direct reports (Dave, Eve) and their downstream reports (Frank) with depth levels.
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: Asynchronous JavaScript – Promises and async/await
 
 Explanation:
-Closures are functions that retain access to the lexical scope in which they were created, even after that outer function has finished executing.  
-They enable data encapsulation by allowing inner functions to remember and manipulate variables from the outer scope.  
-Closures are created every time a function is defined, not when it is invoked.  
-Common use‑cases include private variables, function factories, and maintaining state across asynchronous callbacks.  
-Understanding closures helps avoid common pitfalls like unintended variable sharing in loops.
+1. JavaScript runs in a single thread, so long‑running operations (like network requests) must be handled without blocking the main execution flow.  
+2. A Promise represents a value that may be available now, later, or never, allowing you to attach success and error handlers with .then() and .catch().  
+3. The async keyword marks a function as returning a Promise automatically, enabling the use of await inside it.  
+4. The await operator pauses execution of an async function until the awaited Promise settles, making asynchronous code read like synchronous code.  
+5. Proper error handling with try…catch inside async functions ensures rejections are caught without breaking the call stack.  
 
 Code example with comments:
-function makeCounter() {
-    let count = 0; // this variable is private to the closure
-    return function() {
-        count += 1; // the inner function updates the private count
-        return count; // returns the current count value
-    };
+// Define an async function that fetches JSON data from a public API
+async function loadUser(id) {
+    try {
+        // Await the fetch call; it returns a Promise that resolves to a Response object
+        const response = await fetch(`https://jsonplaceholder.typicode.com/users/${id}`);
+        // Throw an error if the HTTP status is not OK (e.g., 404)
+        if (!response.ok) {
+            throw new Error(`Network response was ${response.status}`);
+        }
+        // Await the call to .json() which also returns a Promise
+        const user = await response.json();
+        console.log('User data:', user);
+        return user; // The async function returns a Promise that resolves to this value
+    } catch (error) {
+        // Handle any errors from fetch or JSON parsing
+        console.error('Failed to load user:', error);
+        // Re‑throw if you want the caller to also handle the error
+        throw error;
+    }
 }
 
-const counter = makeCounter(); // makeCounter returns a function that closes over 'count'
-console.log(counter()); // 1
-console.log(counter()); // 2
-console.log(counter()); // 3
-
-// Each call to counter() shares the same 'count' variable, demonstrating the closure in action.
+// Call the async function; it returns a Promise, so we can use .then()/.catch()
+loadUser(3)
+    .then(user => console.log('User loaded successfully'))
+    .catch(err => console.log('Error loading user'));
 */
 
 /* AI
-Topic: Chain‑of‑Thought Prompting for Complex Reasoning  
+Topic: Using OpenAI’s Chat Completion API for Dynamic Prompt Engineering  
 
 Explanation:  
-Chain‑of‑Thought (CoT) prompting encourages large language models to generate intermediate reasoning steps before giving a final answer. By structuring the prompt as a step‑by‑step problem‑solving narrative, the model can handle multi‑hop questions more reliably than a single‑shot answer. CoT works especially well for arithmetic, logic puzzles, and commonsense inference where hidden dependencies exist. The technique is model‑agnostic and can be combined with temperature tuning to balance creativity and determinism. Implementing CoT requires only a carefully crafted prompt; no model modification is needed.  
+- The Chat Completion API lets developers send a series of messages that model the role‑play of a conversation.  
+- By carefully crafting system and user messages, you can guide the model to adopt specific styles, personas, or reasoning patterns.  
+- Few‑shot examples can be embedded directly in the message list to teach the model how to respond to new inputs.  
+- Adjusting temperature and max_tokens allows you to balance creativity with determinism for programming assistance.  
+- The API returns a JSON payload that includes the model’s reply, which can be parsed and integrated into IDE extensions or command‑line tools.  
 
-Code example (Python, OpenAI API) with inline comments:  
-import os  
+Code example (Python, using the official openai library):  
+
 import openai  
 
-# Load your OpenAI API key from an environment variable for security  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Set your API key (ensure it is stored securely, e.g., in environment variables)  
+openai.api_key = "sk-YOUR_API_KEY"  
 
-def chain_of_thought(question: str) -> str:  
-    # Construct a prompt that explicitly asks for step‑by‑step reasoning  
-    prompt = (  
-        "You are a logical reasoning assistant.\n"  
-        "Solve the problem by writing each reasoning step on a new line, then provide the final answer.\n\n"  
-        f"Problem: {question}\n"  
-        "Answer:"  
-    )  
+def get_explained_code(user_prompt: str) -> str:  
+    """Send a prompt to the Chat Completion API and return the model's explanation."""  
+    messages = [  
+        {"role": "system", "content": "You are a helpful assistant that explains Python code step‑by‑step for beginners."},  
+        {"role": "user", "content": f"Explain the following code in plain English:\n\n{user_prompt}"},  
+        # Few‑shot example to demonstrate desired output format  
+        {"role": "assistant", "content": "Sure! The code defines a function `add(a, b)` that returns the sum of `a` and `b`. It then calls the function with arguments 2 and 3, printing the result `5`."}  
+    ]  
 
-    # Call the chat completion endpoint with a moderate temperature (e.g., 0.3) for focused reasoning  
     response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",  
-        messages=[{"role": "user", "content": prompt}],  
-        temperature=0.3,  
-        max_tokens=300,  
-        n=1,  
-        stop=None,  
+        model="gpt-4o-mini",        # lightweight model suitable for code tasks  
+        messages=messages,  
+        temperature=0.2,            # low temperature for consistent explanations  
+        max_tokens=300,             # limit length of the explanation  
+        n=1                         # return a single best answer  
     )  
 
-    # Extract and return the assistant's full text (including reasoning steps)  
-    return response.choices[0].message.content.strip()  
+    # Extract the assistant's reply from the JSON response  
+    explanation = response["choices"][0]["message"]["content"]  
+    return explanation  
 
 # Example usage  
-question = "If a train travels 150 miles in 3 hours and then 90 miles in 2 hours, what is its average speed in miles per hour?"  
-result = chain_of_thought(question)  
-print(result)  
-
-
-
-# Expected output format (example):  
-# Step 1: Compute speed for first segment = 150/3 = 50 mph  
-# Step 2: Compute speed for second segment = 90/2 = 45 mph  
-# Step 3: Total distance = 150 + 90 = 240 miles  
-# Step 4: Total time = 3 + 2 = 5 hours  
-# Final answer: 240/5 = 48 mph  
+sample_code = "def factorial(n):\n    return 1 if n == 0 else n * factorial(n-1)"  
+print(get_explained_code(sample_code))  
 */
 
