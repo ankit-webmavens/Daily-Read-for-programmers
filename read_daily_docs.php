@@ -1,247 +1,231 @@
 <?php
-// 2026-10-28 07:18:20
+// 2026-10-29 07:38:10
 
 /* PHP
-Topic Name: PHP Generators
+PHP PDO Prepared Statements  
 
-Explanation:
-Generators allow a function to produce a sequence of values over time without building the entire data set in memory.  
-They use the yield keyword to return a value and pause execution, resuming when the next value is requested.  
-This makes handling large data streams, such as reading big files or database rows, much more memory‑efficient.  
-Generators also simplify iterator implementation, removing the need to implement the Iterator interface manually.  
-Because each yielded value is produced on demand, the overall performance can be significantly improved for lazy evaluation scenarios.  
+Prepared statements are a secure way to execute SQL queries with user‑supplied data.  
+They separate the query structure from the actual values, preventing SQL injection.  
+The statement is prepared once by the database server, then executed multiple times with different parameters.  
+PDO automatically handles data type conversion and quoting when binding values.  
+Using prepared statements also improves performance for repeated queries.  
 
-Code Example:
 <?php
-// A simple generator that yields numbers from 1 to $max
-function numberSequence(int $max): Generator
-{
-    for ($i = 1; $i <= $max; $i++) {
-        // Yield the current number and pause execution
-        yield $i;
-    }
-}
+// Create a new PDO instance (replace DSN, username, password as needed)
+$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass');
+// Enable exceptions for error handling
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-// Using the generator in a foreach loop
-foreach (numberSequence(5) as $number) {
-    // Each iteration receives the next yielded value
-    echo "Number: $number\n";
-}
+// Prepare an INSERT statement with named placeholders
+$stmt = $pdo->prepare('INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())');
 
-// Demonstrating that the generator does not store all values at once
-// The memory usage remains low even for a very large $max
-$bigGenerator = numberSequence(1000000);
-foreach ($bigGenerator as $value) {
-    if ($value > 5) break; // stop early to show lazy behavior
-    echo $value . ' ';
-}
+// Bind values to the placeholders
+$username = 'alice';
+$email = 'alice@example.com';
+$stmt->bindParam(':username', $username, PDO::PARAM_STR);
+$stmt->bindParam(':email', $email, PDO::PARAM_STR);
+
+// Execute the prepared statement
+$stmt->execute();
+
+// The same statement can be reused with different data
+$username = 'bob';
+$email = 'bob@example.com';
+$stmt->execute(); // No need to re‑prepare, just execute with new bound values
 ?>
 */
 
 /* Laravel
-Laravel Service Container and Dependency Injection  
+Topic: Form Request Validation in Laravel
 
-The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection automatically. It resolves objects by inspecting their constructors and injecting the required dependencies, allowing for clean, testable code. You can bind interfaces to concrete implementations, enabling flexible swapping of implementations without changing consuming code. The container also supports contextual binding, which resolves different implementations based on where they are needed. Using the container directly via the app() helper or type‑hinting in controllers and other classes simplifies object creation throughout the framework.  
+Explanation:
+Form Request Validation is a dedicated class that encapsulates validation logic for incoming HTTP requests, keeping controllers clean and reusable. It allows you to define validation rules, custom messages, and authorization logic in a single place. When a Form Request is type‑hinted in a controller method, Laravel automatically validates the request before the method runs. If validation fails, a redirect with error messages is generated automatically. This approach promotes single‑responsibility principles and makes testing validation rules straightforward.
 
-Example – binding an interface to an implementation and injecting it into a controller  
-
+Code Example (app/Http/Requests/StorePostRequest.php):
 <?php
-namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripePaymentGateway;
+namespace App\Http\Requests;
 
-class AppServiceProvider extends ServiceProvider
+use Illuminate\Foundation\Http\FormRequest;
+
+class StorePostRequest extends FormRequest
 {
-    public function register()
+    // Determine if the user is authorized to make this request.
+    public function authorize()
     {
-        // Bind the PaymentGateway interface to the Stripe implementation
-        $this->app->bind(PaymentGateway::class, StripePaymentGateway::class);
+        // For example, only allow authenticated users.
+        return auth()->check();
+    }
+
+    // Define the validation rules that apply to the request.
+    public function rules()
+    {
+        return [
+            'title'   => 'required|string|max:255',
+            'body'    => 'required|string',
+            'image'   => 'nullable|image|max:2048',
+            'tags'    => 'array',
+            'tags.*'  => 'exists:tags,id',
+        ];
+    }
+
+    // Optional: customize error messages.
+    public function messages()
+    {
+        return [
+            'title.required' => 'A title is required for the post.',
+            'body.required'  => 'Please provide the post content.',
+        ];
     }
 }
-?>  
 
+Usage in a controller (app/Http/Controllers/PostController.php):
 <?php
-namespace App\Contracts;
 
-// Define a contract that any payment gateway must follow
-interface PaymentGateway
-{
-    public function charge(float $amount);
-}
-?>  
-
-<?php
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-
-// Concrete implementation using Stripe's API
-class StripePaymentGateway implements PaymentGateway
-{
-    public function charge(float $amount)
-    {
-        // Here you would interact with Stripe's SDK to process the payment
-        // For demonstration, we'll just return a success message
-        return "Charged \${$amount} via Stripe.";
-    }
-}
-?>  
-
-<?php
 namespace App\Http\Controllers;
 
-use App\Contracts\PaymentGateway;
-use Illuminate\Http\Request;
+use App\Http\Requests\StorePostRequest;
+use App\Models\Post;
 
-class PaymentController extends Controller
+class PostController extends Controller
 {
-    protected $gateway;
-
-    // Laravel automatically injects the bound implementation
-    public function __construct(PaymentGateway $gateway)
+    public function store(StorePostRequest $request)
     {
-        $this->gateway = $gateway;
-    }
+        // Validation has already been performed at this point.
+        $validated = $request->validated();
 
-    public function charge(Request $request)
-    {
-        $amount = $request->input('amount');
-        // Use the injected payment gateway to process the charge
-        $result = $this->gateway->charge($amount);
-        return response()->json(['message' => $result]);
+        // Create a new post with the validated data.
+        $post = Post::create([
+            'title' => $validated['title'],
+            'body'  => $validated['body'],
+            'user_id' => auth()->id(),
+        ]);
+
+        // Handle optional image upload.
+        if ($request->hasFile('image')) {
+            $path = $request->file('image')->store('post_images', 'public');
+            $post->update(['image_path' => $path]);
+        }
+
+        // Attach tags if provided.
+        if (!empty($validated['tags'])) {
+            $post->tags()->attach($validated['tags']);
+        }
+
+        return redirect()->route('posts.show', $post)->with('status', 'Post created successfully!');
     }
 }
-?>  
 */
 
 /* MySQL
-MySQL Topic: Stored Procedures  
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
-Explanation:  
-Stored procedures are pre‑compiled collections of SQL statements that reside in the database.  
-They allow you to encapsulate complex logic, reduce network traffic, and enforce business rules centrally.  
-Procedures can accept input parameters, return output parameters, and use control‑flow constructs such as IF, LOOP, and CASE.  
-Because they are compiled once, subsequent calls execute faster than sending the same set of ad‑hoc queries.  
-They also improve security by granting users permission to execute the procedure without exposing the underlying tables.
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. 
+CTEs improve readability by allowing you to break complex queries into logical building blocks. 
+When the CTE is defined with the RECURSIVE keyword, it can reference itself to produce hierarchical or sequential data. 
+Recursive CTEs consist of an anchor member (the starting point) and a recursive member that repeatedly adds rows until a termination condition is met. 
+They are especially useful for traversing trees, generating series, or performing cumulative calculations without procedural code.
 
-Example (create, call, and drop a procedure that calculates total sales for a given product and date range):
+Code example (generating an employee hierarchy using a recursive CTE):
 
--- Drop the procedure if it already exists to avoid errors
-DROP PROCEDURE IF EXISTS GetTotalSales;
-
--- Create the stored procedure
-CREATE PROCEDURE GetTotalSales (
-    IN p_product_id INT,          -- input: product identifier
-    IN p_start_date DATE,         -- input: start of the period
-    IN p_end_date DATE,           -- input: end of the period
-    OUT p_total_amount DECIMAL(10,2)  -- output: total sales amount
+-- Define the recursive CTE named org_chart
+WITH RECURSIVE org_chart AS (
+    -- Anchor member: select the top‑level manager(s)
+    SELECT 
+        employee_id,
+        manager_id,
+        employee_name,
+        1 AS level
+    FROM employees
+    WHERE manager_id IS NULL
+    
+    UNION ALL
+    
+    -- Recursive member: join employees to their managers
+    SELECT 
+        e.employee_id,
+        e.manager_id,
+        e.employee_name,
+        oc.level + 1 AS level
+    FROM employees e
+    INNER JOIN org_chart oc ON e.manager_id = oc.employee_id
 )
-BEGIN
-    -- Initialize the output variable
-    SET p_total_amount = 0;
-
-    -- Compute the sum of quantity * price for matching rows
-    SELECT IFNULL(SUM(quantity * unit_price), 0) INTO p_total_amount
-    FROM sales
-    WHERE product_id = p_product_id
-      AND sale_date BETWEEN p_start_date AND p_end_date;
-END;
-
--- Call the procedure and retrieve the result
-CALL GetTotalSales(42, '2023-01-01', '2023-12-31', @total);
-SELECT @total AS TotalSalesForProduct42_2023;
-
--- Clean up: remove the procedure when it is no longer needed
-DROP PROCEDURE GetTotalSales;
+-- Final query: retrieve the full hierarchy ordered by level
+SELECT 
+    employee_id,
+    manager_id,
+    employee_name,
+    level
+FROM org_chart
+ORDER BY level, manager_id;
 */
 
 /* JavaScript
-Topic: Event Delegation in JavaScript
+Topic: Closures in JavaScript
 
-Explanation:  
-Event delegation is a technique that leverages event bubbling to handle events at a higher level in the DOM tree rather than attaching listeners to each individual element. This reduces memory usage and improves performance, especially when dealing with large or dynamically generated lists. By listening for events on a common ancestor, you can determine the actual target of the event using the event object. It also simplifies code maintenance because you only need to manage a single handler. Event delegation works for most event types that bubble, such as click, input, and change.
+Explanation:
+A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context.  
+Closures allow inner functions to remember and interact with variables defined in outer functions.  
+They are created every time a function is defined, capturing the surrounding state at that moment.  
+Common uses include data encapsulation, function factories, and maintaining private variables.  
+Understanding closures is essential for mastering asynchronous patterns and module design in JavaScript.  
 
-Code example with comments:  
-const listContainer = document.getElementById('list');  
+Code Example:
+// Outer function defines a private variable and returns an inner function
+function createCounter(initialValue) {
+    let count = initialValue;                 // count is private to createCounter
+    return function() {
+        count += 1;                            // inner function accesses and modifies count
+        return count;                         // returns the updated count
+    };
+}
 
-// Attach a single click listener to the parent <ul> element  
-listContainer.addEventListener('click', function(event) {  
+// Use the closure
+const counterA = createCounter(0);             // counterA has its own private count
+console.log(counterA()); // 1
+console.log(counterA()); // 2
 
-    // Check if the clicked element is a list item (<li>)  
-    if (event.target && event.target.nodeName === 'LI') {  
-
-        // Perform the desired action, e.g., toggle a CSS class  
-        event.target.classList.toggle('selected');  
-
-        // Log the text content of the clicked item  
-        console.log('Clicked item:', event.target.textContent);  
-    }  
-});  
+const counterB = createCounter(10);            // counterB has a separate private count
+console.log(counterB()); // 11
+console.log(counterA()); // 3   // counterA’s count continues independently of counterB  
 */
 
 /* AI
-Topic: Retrieval‑Augmented Generation (RAG) with OpenAI’s Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-Retrieval‑augmented generation combines a vector store of documents with a large language model to produce answers grounded in external knowledge. First, a user query is embedded and used to fetch the most relevant passages from the store. Those passages are then supplied to the model as part of the system prompt, guiding it to cite facts and stay on topic. RAG reduces hallucinations because the model’s output is conditioned on real data rather than relying solely on its internal parameters. It is especially useful for building chat assistants that need up‑to‑date or domain‑specific information without fine‑tuning the model. The approach scales well: you can swap in different embedding models or vector databases while keeping the same generation pipeline.
+Few‑shot prompting supplies a small number of example inputs and desired outputs within the prompt, guiding the language model toward the required behavior without fine‑tuning. By carefully selecting representative demonstrations, you can shape the model’s style, enforce formatting rules, or constrain it to a particular domain. This technique works well for tasks like data extraction, code generation, or classification where labeled data are scarce. The prompt is constructed as a list of messages: a system message sets the overall role, then alternating user‑assistant pairs provide the examples, followed by the new user query. Adjusting the number and quality of examples directly influences the model’s accuracy and consistency.  
 
-Code example (Python, using openai and chromadb for the vector store):
+Code example (Python, using the openai library):  
 
-import os
-import openai
-import chromadb
-from chromadb.utils import embedding_functions
+import os  
+import openai  
 
-# Initialize OpenAI client – set your API key in the environment
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set your OpenAI API key (ensure it is stored securely)  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Set up a ChromaDB collection with OpenAI embeddings
-client = chromadb.Client()
-embedder = embedding_functions.OpenAIEmbeddingFunction(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    model_name="text-embedding-3-large"
-)
-collection = client.get_or_create_collection(name="docs", embedding_function=embedder)
+# Define the few‑shot prompt as a list of message dictionaries  
+messages = [  
+    {"role": "system", "content": "You are a helpful assistant that extracts product names and prices from e‑commerce descriptions."},  
+    # Example 1 – user provides a description, assistant extracts fields  
+    {"role": "user", "content": "The sleek XYZ smartwatch features a 1.5‑inch display and costs $199."},  
+    {"role": "assistant", "content": "Product: XYZ smartwatch\nPrice: $199"},  
+    # Example 2 – second demonstration  
+    {"role": "user", "content": "Our new ergonomic office chair is priced at $349 and comes in black or gray."},  
+    {"role": "assistant", "content": "Product: ergonomic office chair\nPrice: $349"},  
+    # New query – model must follow the pattern above  
+    {"role": "user", "content": "Introducing the portable Bluetooth speaker, battery life 12 hours, price $79."}  
+]  
 
-# Example: add a few documents (run once)
-docs = [
-    {"id": "1", "text": "Python's list comprehensions provide a concise way to create lists."},
-    {"id": "2", "text": "The quicksort algorithm has an average time complexity of O(n log n)."},
-    {"id": "3", "text": "OpenAI's function calling feature lets models return structured data."}
-]
-collection.add(
-    ids=[d["id"] for d in docs],
-    documents=[d["text"] for d in docs]
-)
+# Call the Chat Completion endpoint  
+response = openai.ChatCompletion.create(  
+    model="gpt-4o-mini",          # choose a model that supports chat format  
+    messages=messages,  
+    temperature=0.0,              # deterministic output for extraction tasks  
+)  
 
-def retrieve_relevant_passages(query, k=2):
-    # Embed the query and fetch the top‑k closest documents
-    results = collection.query(
-        query_texts=[query],
-        n_results=k
-    )
-    # Return concatenated passages for the prompt
-    return "\n".join(results["documents"][0])
-
-def generate_answer(query):
-    # Retrieve context
-    context = retrieve_relevant_passages(query)
-    # Build system prompt with retrieved info
-    system_prompt = f"You are an AI assistant. Use the following context to answer the question.\nContext:\n{context}\nAnswer concisely and cite the source IDs if possible."
-    # Call Chat Completion
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": query}
-        ],
-        temperature=0.2
-    )
-    return response.choices[0].message.content
-
-# Example query
-print(generate_answer("How do list comprehensions work in Python?"))
+# Print the assistant’s extraction result  
+print(response.choices[0].message.content.strip())   # Expected: Product: portable Bluetooth speaker\nPrice: $79  
 */
 
