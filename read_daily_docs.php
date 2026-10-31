@@ -1,187 +1,239 @@
 <?php
-// 2026-10-30 07:41:42
+// 2026-10-31 07:27:30
 
 /* PHP
-Topic: Prepared Statements with PDO (PHP Data Objects)
+Topic: PHP Traits
 
-Explanation:  
-Prepared statements separate SQL code from data values, protecting against SQL injection and improving performance for repeated queries. With PDO you first prepare a statement containing placeholders, then bind actual values before execution. This approach lets the database engine compile the query once and reuse the execution plan for each set of parameters. PDO supports both named (e.g., :name) and positional (?) placeholders, making the syntax flexible. Using prepared statements also simplifies handling of different data types, as PDO automatically quotes and formats bound values.
+Explanation:
+Traits allow you to reuse sets of methods across multiple classes without using inheritance.  
+They are especially useful when different classes need the same functionality but do not share a parent class.  
+A trait can contain methods, properties, and even abstract method declarations that the using class must implement.  
+When a class uses a trait, the trait's methods become part of the class as if they were defined there.  
+Conflicts between traits can be resolved with the "insteadof" and "as" operators, giving fine‑grained control over method precedence.
 
 Code example (with comments):
 <?php
-// Create a new PDO connection (replace DSN, username, password with real values)
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-];
-$pdo = new PDO($dsn, $username, $password, $options);
+// Define a reusable trait with common logging functionality
+trait LoggerTrait {
+    // Simple method to log a message with a timestamp
+    public function log(string $message): void {
+        $timestamp = date('Y-m-d H:i:s');
+        echo "[{$timestamp}] {$message}\n";
+    }
 
-// Define the SQL with named placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
-
-// Prepare the statement once
-$stmt = $pdo->prepare($sql);
-
-// Data to insert (could come from user input)
-$userData = [
-    'username' => 'jane_doe',
-    'email'    => 'jane@example.com',
-];
-
-// Bind the values and execute the statement
-$stmt->execute($userData);
-
-// If you need to insert multiple rows, you can reuse the same prepared statement
-$moreUsers = [
-    ['username' => 'john_smith', 'email' => 'john@example.com'],
-    ['username' => 'alice_wong', 'email' => 'alice@example.org'],
-];
-
-foreach ($moreUsers as $data) {
-    $stmt->execute($data); // Reuse the prepared statement with new values
+    // Abstract method that consuming classes must implement
+    abstract protected function getLogPrefix(): string;
 }
 
-// Retrieve the ID of the last inserted row
-$lastId = $pdo->lastInsertId();
-echo "Last inserted user ID: $lastId\n";
+// First class that uses the trait
+class User {
+    use LoggerTrait;
+
+    protected function getLogPrefix(): string {
+        return "User";
+    }
+
+    public function create(string $username): void {
+        // Business logic for creating a user...
+        $this->log($this->getLogPrefix() . " created: {$username}");
+    }
+}
+
+// Second class that also uses the same trait
+class Order {
+    use LoggerTrait;
+
+    protected function getLogPrefix(): string {
+        return "Order";
+    }
+
+    public function place(int $orderId): void {
+        // Business logic for placing an order...
+        $this->log($this->getLogPrefix() . " placed: #{$orderId}");
+    }
+}
+
+// Demonstration
+$user = new User();
+$user->create('alice');
+
+$order = new Order();
+$order->place(12345);
 ?>
 */
 
 /* Laravel
-Laravel Service Container and Dependency Injection  
+Topic: Form Request Validation in Laravel
 
-The service container is the heart of Laravel’s inversion of control (IoC) system.  
-It resolves class dependencies automatically, allowing you to type‑hint objects in constructors or controller methods.  
-Binding abstractions to concrete implementations lets you swap implementations without changing consuming code.  
-Singleton bindings ensure a single shared instance across the request lifecycle.  
-The container also supports contextual binding, useful when the same interface needs different implementations in different parts of the app.  
+Explanation:  
+Form Request classes encapsulate validation logic, keeping controllers clean and focused on handling the request. They automatically run before the controller method, returning a validated data array if the rules pass. You can define authorization logic to restrict who can make the request. Custom error messages and attribute names can be added for clearer feedback to users. Using Form Requests promotes reusability and makes testing validation rules straightforward.
+
+Code example with comments:
 
 <?php
-namespace App\Providers;
+namespace App\Http\Requests;
 
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripePaymentGateway;
-use App\Services\PaypalPaymentGateway;
+use Illuminate\Foundation\Http\FormRequest;
 
-class AppServiceProvider extends ServiceProvider
+class StorePostRequest extends FormRequest
 {
-    // Register container bindings
-    public function register()
+    // Determine if the user is authorized to make this request.
+    public function authorize()
     {
-        // Bind the interface to a concrete class (default implementation)
-        $this->app->bind(PaymentGateway::class, StripePaymentGateway::class);
+        // Change to false to deny all users or add custom logic.
+        return true;
+    }
 
-        // Bind a singleton – the same instance will be used each time it is resolved
-        $this->app->singleton('cache.store', function ($app) {
-            return new \Illuminate\Cache\RedisStore($app['redis']);
-        });
+    // Define the validation rules applied to the incoming data.
+    public function rules()
+    {
+        return [
+            'title'       => 'required|string|max:255',
+            'body'        => 'required|string',
+            'category_id' => 'required|exists:categories,id',
+        ];
+    }
 
-        // Contextual binding: use Paypal when injecting into OrderController
-        $this->app->when(\App\Http\Controllers\OrderController::class)
-                  ->needs(PaymentGateway::class)
-                  ->give(PaypalPaymentGateway::class);
+    // (Optional) Provide custom error messages for the rules.
+    public function messages()
+    {
+        return [
+            'title.required'       => 'A title is required.',
+            'body.required'        => 'Please provide the post content.',
+            'category_id.exists'   => 'The selected category does not exist.',
+        ];
     }
 }
 
-// Example of a controller using automatic dependency injection
-namespace App\Http\Controllers;
+use App\Http\Requests\StorePostRequest;
+use App\Models\Post;
 
-use App\Contracts\PaymentGateway;
-
-class CheckoutController extends Controller
+class PostController extends Controller
 {
-    protected $paymentGateway;
-
-    // The container injects the appropriate implementation automatically
-    public function __construct(PaymentGateway $paymentGateway)
+    // The StorePostRequest is injected, so validation runs automatically.
+    public function store(StorePostRequest $request)
     {
-        $this->paymentGateway = $paymentGateway; // StripePaymentGateway by default
-    }
+        // Retrieve only the validated fields.
+        $validatedData = $request->validated();
 
-    public function process()
-    {
-        // Use the injected service
-        $this->paymentGateway->charge(1000, 'USD');
-        return response('Payment processed');
+        // Create the post using mass assignment.
+        $post = Post::create($validatedData);
+
+        // Redirect to the newly created post's page.
+        return redirect()->route('posts.show', $post);
     }
 }
-?>
 */
 
 /* MySQL
-Topic: MySQL Transaction Isolation Levels
+Topic: Common Table Expressions (CTEs) and Recursive Queries in MySQL
 
 Explanation:  
-MySQL supports several transaction isolation levels that control how concurrent transactions see data changes made by other sessions. The levels range from READ UNCOMMITTED (allows dirty reads) to SERIALIZABLE (prevents phantom reads by locking the entire range). Choosing the appropriate level balances consistency requirements against performance and concurrency. The default isolation level in InnoDB is REPEATABLE READ, which prevents non‑repeatable reads but allows phantom rows unless explicit locking is used. You can set the isolation level per session or globally, and it affects the behavior of SELECT, INSERT, UPDATE, and DELETE statements within a transaction.
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and can improve readability by separating complex subqueries from the main query logic.  
+MySQL 8.0 introduced support for both non‑recursive and recursive CTEs, enabling hierarchical data processing such as organizational charts or tree traversals.  
+Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly references the CTE itself until a termination condition is met.  
+Because the CTE is materialized only for the duration of the statement, it does not persist in the database schema and has no impact on storage.  
 
-Code example (with comments):
-SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;  -- set isolation level for this session
-START TRANSACTION;                                      -- begin a new transaction
-SELECT * FROM orders WHERE order_date >= '2024-01-01' LOCK IN SHARE MODE; 
--- lock the selected rows in shared mode so other transactions can read but not modify them
-UPDATE orders SET status = 'processed' WHERE order_id = 1024; 
--- this update will wait if another transaction holds an exclusive lock on the same row
-COMMIT;                                                 -- finalize changes and release locks
--- After commit, other sessions will see the updated status according to their own isolation level.
+Code example (recursive CTE that lists an employee hierarchy):
+
+-- Define a CTE named emp_hierarchy that starts with the top‑level manager (manager_id IS NULL)
+WITH RECURSIVE emp_hierarchy AS (
+    SELECT 
+        employee_id,
+        employee_name,
+        manager_id,
+        1 AS level               -- base level for top manager
+    FROM employees
+    WHERE manager_id IS NULL    -- anchor member
+
+    UNION ALL
+
+    SELECT 
+        e.employee_id,
+        e.employee_name,
+        e.manager_id,
+        eh.level + 1 AS level    -- increment level for each recursion
+    FROM employees e
+    JOIN emp_hierarchy eh ON e.manager_id = eh.employee_id   -- recursive member
+)
+SELECT 
+    employee_id,
+    employee_name,
+    manager_id,
+    level
+FROM emp_hierarchy
+ORDER BY level, manager_id;   -- results show the hierarchy from top to bottom  
 */
 
 /* JavaScript
-Topic: Closures and Lexical Scoping in JavaScript  
+Topic Name: Closures in JavaScript  
 
 Explanation:  
-A closure is a function that retains access to its surrounding lexical environment even after that outer function has finished executing. This means the inner function can read and modify variables defined in the outer scope. Closures enable data privacy, function factories, and partial application patterns. They are created automatically whenever a function references a variable from an outer scope. Understanding closures is essential for managing asynchronous code, event handlers, and module design.  
+A closure is a function that retains access to the variables from its lexical scope even after that outer function has finished executing.  
+Closures enable data privacy by encapsulating variables that cannot be accessed directly from outside the function.  
+They are created every time a function is defined, not just when it is called.  
+Closures are widely used for partial application, function factories, and maintaining state in asynchronous code.  
+Understanding closures helps avoid common pitfalls related to variable hoisting and the behavior of the `this` keyword.  
 
-Code example:  
+Code Example:  
+function makeCounter(start) {                     // outer function receives an initial value  
+    let count = start;                           // this variable is private to the closure  
 
-function makeCounter(initialValue) {               // outer function creates a private variable
-  let count = initialValue;                        // this variable is captured by the inner function
-  return function step(increment) {               // the inner function forms a closure
-    count += increment;                           // it can read and modify 'count'
-    return count;                                 // returns the updated value
-  };
-}
+    return function increment(step = 1) {        // inner function forms a closure over `count`  
+        count += step;                           // modifies the captured variable  
+        return count;                            // returns the updated count  
+    };                                            // end of inner function  
 
-const counter = makeCounter(10); // counter is a closure with its own 'count' variable
-console.log(counter(5));  // Output: 15  // adds 5 to the private count
-console.log(counter(2));  // Output: 17  // adds 2, showing that 'count' persisted
-// A second independent counter
-const another = makeCounter(0);
-console.log(another(3)); // Output: 3  // starts from its own initial value, unaffected by the first counter.
+}                                                 // end of outer function  
+
+const counterA = makeCounter(10); // counterA has its own private `count`  
+console.log(counterA());          // 11 (default step of 1)  
+console.log(counterA(5));         // 16 (adds 5)  
+
+const counterB = makeCounter(0);  // separate closure with its own `count`  
+console.log(counterB());          // 1  
+console.log(counterB(2));         // 3   (counterB’s state is independent of counterA)  
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small number of example input‑output pairs before the actual query, guiding it toward the desired response style. By placing these demonstrations in the system or user messages, you can shape the model’s behavior without fine‑tuning. This technique works well for tasks like data extraction, code generation, or format conversion. The examples act as implicit instructions, helping the model infer the pattern you expect. Adjusting the number and clarity of examples lets you trade off between precision and token cost.
+Few‑shot prompting supplies the model with a few example input‑output pairs to guide its behavior on new queries. By carefully selecting representative demonstrations, you can shape the model’s style, format, and reasoning pattern without fine‑tuning. This technique works well for tasks like classification, data extraction, or code generation where a few high‑quality examples convey the desired pattern. The prompt is built as a list of message objects, alternating between “system”, “user”, and “assistant” roles, ending with the new user request. Adjusting the temperature and max_tokens helps control creativity and output length.
 
-Code example (Python, requires the openai package and an API key set in the environment):  
-import os, json, openai  
+Code example (Python, using the openai library):
 
-# Load API key from environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+import openai
 
-# Define a few‑shot prompt that extracts product names and prices from a text block  
-messages = [  
-    {"role": "system", "content": "You are an assistant that extracts product information and returns a JSON list of objects with 'name' and 'price' fields."},  
-    {"role": "user", "content": "Example 1:\nInput: \"Buy the UltraPhone for $299 and the MegaTablet for $499.\"\nOutput: [{\"name\": \"UltraPhone\", \"price\": 299}, {\"name\": \"MegaTablet\", \"price\": 499}]"},  
-    {"role": "user", "content": "Example 2:\nInput: \"Special offer: EcoLamp at $45, SolarCharger for $120.\"\nOutput: [{\"name\": \"EcoLamp\", \"price\": 45}, {\"name\": \"SolarCharger\", \"price\": 120}]"},  
-    {"role": "user", "content": "Now extract from the following text:\n\"Limited time deal: SmartWatch $199, NoiseCancelling Headphones $250.\"\nOutput:"}  
-]  
+# Set your API key (replace with your actual key or use env variable)
+openai.api_key = "sk-YOUR_API_KEY"
 
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",  
-    messages=messages,  
-    temperature=0.0,   # deterministic output for extraction tasks  
-    max_tokens=200  
-)  
+def classify_sentiment(text):
+    # Define a few‑shot prompt with two example classifications
+    messages = [
+        {"role": "system", "content": "You are an assistant that classifies sentiment of short sentences as Positive, Negative, or Neutral."},
+        {"role": "user", "content": "I love the new design of this app!"},
+        {"role": "assistant", "content": "Positive"},
+        {"role": "user", "content": "The update broke my workflow, very frustrating."},
+        {"role": "assistant", "content": "Negative"},
+        # New query to classify
+        {"role": "user", "content": text}
+    ]
 
-# The model returns a string that should be valid JSON; parse it safely  
-extracted = json.loads(response.choices[0].message.content.strip())  
-print(json.dumps(extracted, indent=2))   # pretty‑print the result  
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",          # Choose a suitable model
+        messages=messages,
+        temperature=0.0,              # Deterministic output for classification
+        max_tokens=10,                # Limit token usage
+        top_p=1.0,
+        n=1
+    )
+    # Extract the assistant's reply
+    sentiment = response.choices[0].message.content.strip()
+    return sentiment
+
+# Example usage
+print(classify_sentiment("The customer support was okay, nothing special."))   # Expected: Neutral  
 */
 
