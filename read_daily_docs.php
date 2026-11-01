@@ -1,239 +1,224 @@
 <?php
-// 2026-10-31 07:27:30
+// 2026-11-01 08:02:49
 
 /* PHP
-Topic: PHP Traits
+Topic: PDO Prepared Statements  
 
-Explanation:
-Traits allow you to reuse sets of methods across multiple classes without using inheritance.  
-They are especially useful when different classes need the same functionality but do not share a parent class.  
-A trait can contain methods, properties, and even abstract method declarations that the using class must implement.  
-When a class uses a trait, the trait's methods become part of the class as if they were defined there.  
-Conflicts between traits can be resolved with the "insteadof" and "as" operators, giving fine‑grained control over method precedence.
+Explanation:  
+PDO (PHP Data Objects) provides a uniform interface for accessing many different databases. Using prepared statements with PDO separates SQL code from data, which prevents SQL injection attacks. The statement is parsed by the database server once, then can be executed multiple times with different parameters, improving performance for repeated queries. Placeholders in the SQL are bound to PHP variables, allowing automatic data type handling and proper escaping. Errors can be caught with exceptions, making debugging easier and keeping the application stable.  
 
-Code example (with comments):
+Code example:  
+
 <?php
-// Define a reusable trait with common logging functionality
-trait LoggerTrait {
-    // Simple method to log a message with a timestamp
-    public function log(string $message): void {
-        $timestamp = date('Y-m-d H:i:s');
-        echo "[{$timestamp}] {$message}\n";
-    }
+// Enable exceptions for PDO errors
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
 
-    // Abstract method that consuming classes must implement
-    abstract protected function getLogPrefix(): string;
+try {
+    // Create a new PDO instance
+    $pdo = new PDO($dsn, $username, $password);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+    // Prepare an INSERT statement with named placeholders
+    $stmt = $pdo->prepare('INSERT INTO users (email, password_hash) VALUES (:email, :pwd_hash)');
+
+    // Data to be inserted
+    $email = 'alice@example.com';
+    $pwdHash = password_hash('secret123', PASSWORD_BCRYPT);
+
+    // Bind values to the placeholders and execute
+    $stmt->bindParam(':email', $email);
+    $stmt->bindParam(':pwd_hash', $pwdHash);
+    $stmt->execute();
+
+    echo "User inserted successfully.";
+} catch (PDOException $e) {
+    // Handle any errors
+    echo 'Database error: ' . $e->getMessage();
 }
-
-// First class that uses the trait
-class User {
-    use LoggerTrait;
-
-    protected function getLogPrefix(): string {
-        return "User";
-    }
-
-    public function create(string $username): void {
-        // Business logic for creating a user...
-        $this->log($this->getLogPrefix() . " created: {$username}");
-    }
-}
-
-// Second class that also uses the same trait
-class Order {
-    use LoggerTrait;
-
-    protected function getLogPrefix(): string {
-        return "Order";
-    }
-
-    public function place(int $orderId): void {
-        // Business logic for placing an order...
-        $this->log($this->getLogPrefix() . " placed: #{$orderId}");
-    }
-}
-
-// Demonstration
-$user = new User();
-$user->create('alice');
-
-$order = new Order();
-$order->place(12345);
 ?>
 */
 
 /* Laravel
-Topic: Form Request Validation in Laravel
+Topic: Laravel Queues and Jobs  
 
 Explanation:  
-Form Request classes encapsulate validation logic, keeping controllers clean and focused on handling the request. They automatically run before the controller method, returning a validated data array if the rules pass. You can define authorization logic to restrict who can make the request. Custom error messages and attribute names can be added for clearer feedback to users. Using Form Requests promotes reusability and makes testing validation rules straightforward.
+Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or interacting with external APIs, keeping the user experience fast.  
+A job class encapsulates the logic for a single unit of work and can be dispatched to any configured queue driver (database, Redis, SQS, etc.).  
+When a job is dispatched, Laravel serializes the class and stores it in the queue, where a worker process later retrieves and executes it.  
+Failed jobs are automatically logged and can be retried, providing robust error handling for background processing.  
+Using queues also enables horizontal scaling by adding more worker processes without changing the application code.  
 
-Code example with comments:
+Code example (Job class and dispatching it):  
 
 <?php
-namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
+namespace App\Jobs;
 
-class StorePostRequest extends FormRequest
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use App\Mail\WelcomeMail;
+use Mail;
+
+class SendWelcomeEmail implements ShouldQueue
 {
-    // Determine if the user is authorized to make this request.
-    public function authorize()
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    protected $user; // The user instance to receive the email
+
+    /**
+     * Create a new job instance.
+     *
+     * @param  \App\Models\User  $user
+     * @return void
+     */
+    public function __construct($user)
     {
-        // Change to false to deny all users or add custom logic.
-        return true;
+        $this->user = $user; // Store user data for later processing
     }
 
-    // Define the validation rules applied to the incoming data.
-    public function rules()
+    /**
+     * Execute the job.
+     *
+     * @return void
+     */
+    public function handle()
     {
-        return [
-            'title'       => 'required|string|max:255',
-            'body'        => 'required|string',
-            'category_id' => 'required|exists:categories,id',
-        ];
-    }
-
-    // (Optional) Provide custom error messages for the rules.
-    public function messages()
-    {
-        return [
-            'title.required'       => 'A title is required.',
-            'body.required'        => 'Please provide the post content.',
-            'category_id.exists'   => 'The selected category does not exist.',
-        ];
+        // Build and send the welcome email
+        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
     }
 }
 
-use App\Http\Requests\StorePostRequest;
-use App\Models\Post;
+// Somewhere in a controller or service after a user registers:
+use App\Jobs\SendWelcomeEmail;
 
-class PostController extends Controller
+public function register(Request $request)
 {
-    // The StorePostRequest is injected, so validation runs automatically.
-    public function store(StorePostRequest $request)
-    {
-        // Retrieve only the validated fields.
-        $validatedData = $request->validated();
-
-        // Create the post using mass assignment.
-        $post = Post::create($validatedData);
-
-        // Redirect to the newly created post's page.
-        return redirect()->route('posts.show', $post);
-    }
+    $user = User::create($request->only(['name', 'email', 'password']));
+    
+    // Dispatch the job to the default queue
+    SendWelcomeEmail::dispatch($user);
+    
+    return response()->json(['message' => 'Registration successful, email will be sent shortly.']);
 }
+?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries in MySQL
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and can improve readability by separating complex subqueries from the main query logic.  
-MySQL 8.0 introduced support for both non‑recursive and recursive CTEs, enabling hierarchical data processing such as organizational charts or tree traversals.  
-Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly references the CTE itself until a termination condition is met.  
-Because the CTE is materialized only for the duration of the statement, it does not persist in the database schema and has no impact on storage.  
+Explanation:
+- A CTE is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.
+- It improves readability by allowing you to break complex queries into logical building blocks.
+- CTEs are defined using the WITH clause and can be either non‑recursive or recursive.
+- Recursive CTEs are useful for hierarchical data such as organizational charts or tree structures.
+- In MySQL 8.0+ you can use CTEs to replace subqueries and simplify joins, especially when dealing with multi‑level relationships.
 
-Code example (recursive CTE that lists an employee hierarchy):
-
--- Define a CTE named emp_hierarchy that starts with the top‑level manager (manager_id IS NULL)
-WITH RECURSIVE emp_hierarchy AS (
-    SELECT 
-        employee_id,
-        employee_name,
-        manager_id,
-        1 AS level               -- base level for top manager
+Code Example (with comments):
+WITH RECURSIVE org_chart AS (
+    -- Anchor member: start with the top‑level manager (no manager_id)
+    SELECT employee_id, name, manager_id, 1 AS level
     FROM employees
-    WHERE manager_id IS NULL    -- anchor member
+    WHERE manager_id IS NULL
 
     UNION ALL
 
-    SELECT 
-        e.employee_id,
-        e.employee_name,
-        e.manager_id,
-        eh.level + 1 AS level    -- increment level for each recursion
+    -- Recursive member: find employees reporting to the previous level
+    SELECT e.employee_id, e.name, e.manager_id, oc.level + 1
     FROM employees e
-    JOIN emp_hierarchy eh ON e.manager_id = eh.employee_id   -- recursive member
+    INNER JOIN org_chart oc ON e.manager_id = oc.employee_id
 )
-SELECT 
-    employee_id,
-    employee_name,
-    manager_id,
-    level
-FROM emp_hierarchy
-ORDER BY level, manager_id;   -- results show the hierarchy from top to bottom  
+SELECT employee_id, name, manager_id, level
+FROM org_chart
+ORDER BY level, manager_id;
 */
 
 /* JavaScript
-Topic Name: Closures in JavaScript  
+Topic: Closures and Lexical Scoping in JavaScript
 
-Explanation:  
-A closure is a function that retains access to the variables from its lexical scope even after that outer function has finished executing.  
-Closures enable data privacy by encapsulating variables that cannot be accessed directly from outside the function.  
-They are created every time a function is defined, not just when it is called.  
-Closures are widely used for partial application, function factories, and maintaining state in asynchronous code.  
-Understanding closures helps avoid common pitfalls related to variable hoisting and the behavior of the `this` keyword.  
+Explanation:
+- A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing.  
+- JavaScript creates closures automatically whenever a function is defined inside another function.  
+- The inner function forms a closure over the variables of the outer function’s scope, preserving their values across multiple calls.  
+- Closures enable powerful patterns such as data encapsulation, private state, and function factories.  
+- Understanding closures is essential for writing modular, memory‑efficient, and maintainable code.
 
-Code Example:  
-function makeCounter(start) {                     // outer function receives an initial value  
-    let count = start;                           // this variable is private to the closure  
+Code example (with comments):
 
-    return function increment(step = 1) {        // inner function forms a closure over `count`  
-        count += step;                           // modifies the captured variable  
-        return count;                            // returns the updated count  
-    };                                            // end of inner function  
+function makeCounter(start) {               // outer function, creates a private variable
+    let count = start;                     // this variable is captured by the inner function
+    return function increment(step) {      // inner function forms a closure over count
+        count += step;                     // can modify the captured variable
+        console.log('Current count:', count);
+        return count;                      // returns the updated value
+    };
+}
 
-}                                                 // end of outer function  
+// Create a new counter starting at 10
+const counterA = makeCounter(10);
+counterA(2);   // Output: Current count: 12
+counterA(3);   // Output: Current count: 15
 
-const counterA = makeCounter(10); // counterA has its own private `count`  
-console.log(counterA());          // 11 (default step of 1)  
-console.log(counterA(5));         // 16 (adds 5)  
+// Create another independent counter starting at 0
+const counterB = makeCounter(0);
+counterB(5);   // Output: Current count: 5
+counterB(1);   // Output: Current count: 6
 
-const counterB = makeCounter(0);  // separate closure with its own `count`  
-console.log(counterB());          // 1  
-console.log(counterB(2));         // 3   (counterB’s state is independent of counterA)  
+// Each counter maintains its own private 'count' variable because of closures.
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
+Topic: Chain‑of‑Thought Prompt Engineering for Complex Reasoning
 
-Explanation:  
-Few‑shot prompting supplies the model with a few example input‑output pairs to guide its behavior on new queries. By carefully selecting representative demonstrations, you can shape the model’s style, format, and reasoning pattern without fine‑tuning. This technique works well for tasks like classification, data extraction, or code generation where a few high‑quality examples convey the desired pattern. The prompt is built as a list of message objects, alternating between “system”, “user”, and “assistant” roles, ending with the new user request. Adjusting the temperature and max_tokens helps control creativity and output length.
+Explanation:
+Chain‑of‑thought (CoT) prompting guides large language models to generate intermediate reasoning steps before arriving at a final answer, improving performance on tasks that require multi‑step logic. By structuring the prompt with explicit “Let's think step by step” cues, the model is encouraged to break down the problem, making its internal chain of deductions visible. This technique works well for math word problems, logical puzzles, and code explanation tasks. The prompt can be combined with few‑shot examples that demonstrate the desired reasoning pattern, allowing the model to generalize the style to new inputs. Properly crafted CoT prompts reduce hallucination and increase answer correctness without changing model parameters.
 
-Code example (Python, using the openai library):
+Code example (Python, using OpenAI’s ChatCompletion API):
 
+import os
+import json
 import openai
 
-# Set your API key (replace with your actual key or use env variable)
-openai.api_key = "sk-YOUR_API_KEY"
+# Load your OpenAI API key from an environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def classify_sentiment(text):
-    # Define a few‑shot prompt with two example classifications
-    messages = [
-        {"role": "system", "content": "You are an assistant that classifies sentiment of short sentences as Positive, Negative, or Neutral."},
-        {"role": "user", "content": "I love the new design of this app!"},
-        {"role": "assistant", "content": "Positive"},
-        {"role": "user", "content": "The update broke my workflow, very frustrating."},
-        {"role": "assistant", "content": "Negative"},
-        # New query to classify
-        {"role": "user", "content": text}
+def chain_of_thought(prompt: str) -> str:
+    """
+    Sends a prompt to the GPT model with a chain‑of‑thought cue.
+    Returns the model's full response, including intermediate steps.
+    """
+    # Build a few‑shot example that demonstrates the reasoning style
+    few_shot = [
+        {"role": "system", "content": "You are a helpful assistant that solves problems by reasoning step by step."},
+        {"role": "user", "content": "A train travels 60 km/h for 2 hours and then 80 km/h for 3 hours. What is the total distance?"},
+        {"role": "assistant", "content": "Let's think step by step.\n"
+                                         "1. Distance in first segment = 60 km/h * 2 h = 120 km.\n"
+                                         "2. Distance in second segment = 80 km/h * 3 h = 240 km.\n"
+                                         "3. Total distance = 120 km + 240 km = 360 km.\n"
+                                         "Answer: 360 km."},
+        {"role": "user", "content": prompt}
     ]
 
+    # Call the ChatCompletion endpoint
     response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",          # Choose a suitable model
-        messages=messages,
-        temperature=0.0,              # Deterministic output for classification
-        max_tokens=10,                # Limit token usage
-        top_p=1.0,
-        n=1
+        model="gpt-4o-mini",          # choose an appropriate model
+        messages=few_shot,
+        temperature=0.2,               # low temperature for deterministic reasoning
+        max_tokens=300
     )
-    # Extract the assistant's reply
-    sentiment = response.choices[0].message.content.strip()
-    return sentiment
+
+    # Extract the assistant’s reply
+    answer = response["choices"][0]["message"]["content"]
+    return answer.strip()
 
 # Example usage
-print(classify_sentiment("The customer support was okay, nothing special."))   # Expected: Neutral  
+question = "A rectangle has a length that is three times its width. If the perimeter is 64 cm, what is the area?"
+print(chain_of_thought(question))
+
+# The output will include a step‑by‑step breakdown followed by the final area.
 */
 
