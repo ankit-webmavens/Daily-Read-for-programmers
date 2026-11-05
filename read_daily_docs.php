@@ -1,239 +1,204 @@
 <?php
-// 2026-11-04 07:57:11
+// 2026-11-05 08:24:59
 
 /* PHP
-PHP Topic: Traits in PHP
+Topic: PHP PDO (PHP Data Objects) – Secure Database Access  
 
 Explanation:  
-Traits are a mechanism for code reuse in single inheritance languages like PHP.  
-They allow you to group methods that can be inserted into multiple classes without using inheritance.  
-A trait can contain methods, properties, and even abstract method declarations.  
-When a class uses a trait, the trait’s methods become part of that class.  
-If a class and a trait define a method with the same name, the class’s method takes precedence, or you can resolve conflicts using the "insteadof" and "as" operators.
+PDO provides a uniform interface for accessing many different databases, allowing you to switch drivers without changing your code.  
+It supports prepared statements, which separate SQL logic from data values and protect against SQL injection attacks.  
+PDO returns results as objects, associative arrays, or both, giving flexibility in how you process query output.  
+Error handling can be configured to throw exceptions, making debugging and logging more straightforward.  
+Using PDO also enables transaction control, letting you commit or roll back multiple statements as a single unit.  
 
-Code example with comments:
+Code example (connecting to MySQL, inserting a record, and fetching data with prepared statements):  
 
 <?php
-// Define a reusable trait with common functionality
-trait Logger {
-    // Simple method to log messages with a timestamp
-    public function log(string $message): void {
-        echo "[" . date('Y-m-d H:i:s') . "] " . $message . PHP_EOL;
-    }
+// Data source name: includes driver, host, database name, and charset
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
 
-    // Another method that could be shared across classes
-    protected function formatMessage(string $msg): string {
-        return strtoupper($msg);
-    }
+// Database credentials
+$username = 'dbuser';
+$password = 'dbpass';
+
+try {
+    // Create a new PDO instance with exception mode enabled
+    $pdo = new PDO($dsn, $username, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+    ]);
+
+    // Prepare an INSERT statement with placeholders
+    $stmt = $pdo->prepare('INSERT INTO users (email, name) VALUES (:email, :name)');
+
+    // Bind values to the placeholders and execute
+    $stmt->execute([
+        ':email' => 'jane.doe@example.com',
+        ':name'  => 'Jane Doe'
+    ]);
+
+    // Prepare a SELECT statement to retrieve the inserted row
+    $select = $pdo->prepare('SELECT id, email, name FROM users WHERE email = :email');
+    $select->execute([':email' => 'jane.doe@example.com']);
+
+    // Fetch the result as an associative array
+    $user = $select->fetch();
+
+    // Output the retrieved data
+    echo 'User ID: ' . $user['id'] . PHP_EOL;
+    echo 'Email: ' . $user['email'] . PHP_EOL;
+    echo 'Name: ' . $user['name'] . PHP_EOL;
+
+} catch (PDOException $e) {
+    // Handle connection or query errors
+    echo 'Database error: ' . $e->getMessage();
 }
-
-// First class that uses the Logger trait
-class User {
-    use Logger;   // Insert all methods from Logger into User
-
-    public function create(string $username): void {
-        $this->log("Creating user: " . $this->formatMessage($username));
-        // Additional user creation logic here...
-    }
-}
-
-// Second class that also uses the Logger trait
-class Order {
-    use Logger;   // Reuse the same logging functionality
-
-    public function place(int $orderId): void {
-        $this->log("Placing order ID: " . $orderId);
-        // Additional order processing logic here...
-    }
-}
-
-// Demonstration
-$user = new User();
-$user->create('alice');
-
-$order = new Order();
-$order->place(1024);
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container & Dependency Injection
+Topic: Implicit Route Model Binding
 
 Explanation:  
-The service container is the core of Laravel’s inversion of control (IoC) system. It resolves class dependencies automatically, allowing you to type‑hint classes in constructors or controller methods. By binding interfaces to concrete implementations, you can swap out functionality without changing consuming code. The container also supports contextual bindings, singleton bindings, and automatic resolution of primitive values via the service provider. Using dependency injection makes your code more testable, loosely coupled, and easier to maintain.
+Laravel can automatically inject model instances into your controller methods based on route parameters.  
+When a route contains a parameter that matches a model's primary key, Laravel resolves the model behind the scenes.  
+If the record is not found, a 404 response is returned without additional code.  
+This feature reduces boilerplate and keeps controller actions clean and expressive.  
+You just need to type‑hint the model class in the method signature and name the route parameter accordingly.
 
-Code example (app/Providers/AppServiceProvider.php):
-<?php
-namespace App\Providers;
+Code example (web.php):
+Route::get('posts/{post}', [App\Http\Controllers\PostController::class, 'show']);
 
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripeGateway;
-use App\Services\PaypalGateway;
-
-class AppServiceProvider extends ServiceProvider
-{
-    public function register()
-    {
-        // Bind the interface to a concrete class.
-        // You can change this binding based on configuration or environment.
-        $this->app->bind(PaymentGateway::class, function ($app) {
-            if (config('services.payment.default') === 'stripe') {
-                return new StripeGateway(config('services.stripe.key'));
-            }
-
-            return new PaypalGateway(
-                config('services.paypal.client_id'),
-                config('services.paypal.secret')
-            );
-        });
-
-        // Example of a singleton binding – the same instance will be reused.
-        $this->app->singleton('logger', function ($app) {
-            return new \Monolog\Logger('app');
-        });
-    }
-
-    public function boot()
-    {
-        // No boot logic needed for this example.
-    }
-}
-?>
-
-Code example (app/Http/Controllers/OrderController.php):
+Controller (PostController.php):
 <?php
 namespace App\Http\Controllers;
 
+use App\Models\Post;
 use Illuminate\Http\Request;
-use App\Contracts\PaymentGateway;
 
-class OrderController extends Controller
+class PostController extends Controller
 {
-    protected $payment;
-
-    // Laravel automatically injects the bound implementation.
-    public function __construct(PaymentGateway $payment)
+    // Laravel will automatically resolve the Post model instance
+    // based on the {post} parameter from the route.
+    public function show(Post $post)
     {
-        $this->payment = $payment;
-    }
-
-    public function store(Request $request)
-    {
-        // Use the injected payment gateway to process the transaction.
-        $result = $this->payment->charge($request->input('amount'), $request->user());
-
-        if ($result->successful()) {
-            // Handle successful payment.
-        } else {
-            // Handle failure.
-        }
+        // $post is a fully hydrated model or a 404 is already sent.
+        return view('posts.show', ['post' => $post]);
     }
 }
 ?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) in MySQL 8.0+
+MySQL Topic: Stored Procedures with Input Parameters
 
 Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and can be recursive, allowing hierarchical queries such as organizational charts or bill‑of‑materials.  
-They improve query readability by breaking complex logic into named sub‑queries that can be reused multiple times in the same statement.  
-MySQL supports both non‑recursive and recursive CTEs, but the recursive part must contain a UNION ALL that references the CTE itself.  
-CTEs exist only for the duration of the statement; they are not stored as permanent objects in the database.
+Stored procedures are precompiled collections of SQL statements that reside on the MySQL server. They allow you to encapsulate complex logic, reduce client‑server round trips, and enforce consistent data processing. By accepting input parameters, a procedure can be reused for different values without rewriting the query each time. This improves performance because the execution plan is cached after the first call. Proper use of delimiters is required when defining a procedure that contains multiple statements.
 
-Code example (with inline comments):
+Code Example (with comments):
 
-WITH RECURSIVE employee_hierarchy AS (        -- Define the CTE named employee_hierarchy
-    SELECT employee_id, manager_id, 1 AS level   -- Base case: top‑level employees (no manager)
-    FROM employees
-    WHERE manager_id IS NULL
+DROP PROCEDURE IF EXISTS GetCustomerOrders;   -- Remove any existing version of the procedure
+DELIMITER $$                                 -- Change delimiter to allow semicolons inside the procedure
+CREATE PROCEDURE GetCustomerOrders(IN p_customer_id INT)   -- Define procedure with one input parameter
+BEGIN
+    SELECT o.order_id,                     -- Order identifier
+           o.order_date,                   -- Date the order was placed
+           o.total_amount                  -- Total value of the order
+    FROM orders o
+    WHERE o.customer_id = p_customer_id   -- Filter orders for the supplied customer ID
+    ORDER BY o.order_date DESC;           -- Show newest orders first
+END$$                                         -- End of procedure definition
+DELIMITER ;                                   -- Restore default delimiter
 
-    UNION ALL                                   -- Combine base case with recursive step
-    SELECT e.employee_id, e.manager_id, eh.level + 1
-    FROM employees e
-    JOIN employee_hierarchy eh
-      ON e.manager_id = eh.employee_id          -- Recursive step: find subordinates
-)
-SELECT employee_id, manager_id, level
-FROM employee_hierarchy
-ORDER BY level, manager_id;                     -- Final query using the CTE to list hierarchy levels.
+-- Example call to the procedure:
+CALL GetCustomerOrders(42);   -- Retrieves all orders for the customer whose ID is 42.
 */
 
 /* JavaScript
-Topic: Async/Await with Structured Error Handling
+Topic: Closures in JavaScript  
 
-Explanation:
-Async functions let you write asynchronous code that looks synchronous, improving readability. The await keyword pauses execution until a Promise settles, returning its resolved value or throwing if the Promise rejects. Using try…catch blocks around await statements captures both synchronous errors and rejected Promises in one place. This pattern avoids deeply nested .then/.catch chains and makes error propagation clearer. When combined with finally, you can ensure cleanup code runs regardless of success or failure.
+Explanation:  
+A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This happens because the inner function forms a lexical binding to the environment where it was created. Closures are useful for data encapsulation, creating private state, and implementing function factories. They enable patterns such as memoization, partial application, and module-like structures without the need for classes. Understanding closures helps avoid common pitfalls like unintended shared references in loops.  
 
-Code Example:
-// Simulated asynchronous operation that resolves after a delay
-function fetchData(url) {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      // Randomly succeed or fail to demonstrate error handling
-      Math.random() > 0.5
-        ? resolve({ data: `Response from ${url}` })
-        : reject(new Error('Network error'));
-    }, 1000);
-  });
-}
+Code example (with comments):  
+function makeCounter(start) {                     // outer function creates a private variable  
+    let count = start;                            // this variable is captured by the inner function  
 
-// Async function using await with structured error handling
-async function loadAndProcess(url) {
-  try {
-    console.log(`Fetching data from ${url}...`);
-    const response = await fetchData(url);   // Pause until Promise settles
-    console.log('Data received:', response.data);
-    // Further processing can be done here
-  } catch (err) {
-    // Handles both fetchData rejection and any synchronous errors
-    console.error('Failed to load data:', err.message);
-  } finally {
-    // Runs regardless of success or failure, useful for cleanup
-    console.log('Operation completed for', url);
-  }
-}
+    return function() {                          // the inner function forms a closure  
+        count += 1;                               // can read and modify the private count  
+        return count;                             // expose the updated value to the caller  
+    };                                            // end of inner function  
+}                                                 // end of outer function  
 
-// Example usage
-loadAndProcess('https://api.example.com/resource');
+const counterA = makeCounter(0);  // each call gets its own independent closure  
+const counterB = makeCounter(10);  
+
+console.log(counterA()); // 1 – count is now 1, private to counterA  
+console.log(counterA()); // 2 – increments the same private count  
+console.log(counterB()); // 11 – separate closure, starts from 10  
+console.log(counterB()); // 12 – continues its own private count  
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with GPT‑4  
 
 Explanation:  
-Few‑shot prompting supplies the model with a handful of example interactions before the actual query, guiding its behavior without fine‑tuning. By formatting these examples as a sequence of role‑content messages, the model can infer the desired pattern and produce more consistent outputs. This technique is especially useful for tasks like classification, transformation, or generating structured data. The approach works with any GPT‑4 or GPT‑3.5 model and requires only the standard API call, making it quick to prototype. Adjust the number and quality of examples to balance cost and performance.  
+Few‑shot prompting supplies the model with a small number of example input‑output pairs inside the same request, steering it toward a desired behavior.  
+It is especially effective for tasks that require a consistent format, such as extracting fields from text, translating structured data, or generating boilerplate code.  
+Choosing clear, representative examples helps the model generalize the pattern while keeping hallucinations low.  
+The prompt typically combines a system instruction, several user‑assistant example messages, and finally the new user query.  
+When using the OpenAI chat completion API, these messages are passed as a list of dictionaries, each with a role ("system", "user", "assistant") and content.
 
 Code example (Python, using the openai library):  
 
-import os  
 import openai  
 
-# Load your OpenAI API key from an environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Set your API key – replace with your actual key or configure via environment variable  
+openai.api_key = "YOUR_API_KEY"  
 
-# Define a few‑shot prompt as a list of message dictionaries  
-few_shot_messages = [  
-    {"role": "system", "content": "You are a helpful assistant that converts plain English sentences into JSON objects with fields 'action' and 'object'."},  
-    {"role": "user", "content": "Turn on the lights."},  
-    {"role": "assistant", "content": '{"action": "turn_on", "object": "lights"}'},  
-    {"role": "user", "content": "Play some jazz music."},  
-    {"role": "assistant", "content": '{"action": "play", "object": "jazz music"}'},  
-    # The new query we want the model to answer in the same format  
-    {"role": "user", "content": "Set a reminder for tomorrow at 9am."}  
-]  
+# Define the system instruction that sets the overall behavior  
+system_msg = {  
+    "role": "system",  
+    "content": "You are a helpful assistant that extracts contact information from informal emails."  
+}  
 
-# Call the ChatCompletion endpoint with the prepared messages  
+# Example 1 – user provides an email, assistant extracts the data  
+example_user_1 = {  
+    "role": "user",  
+    "content": "Hey team, you can reach me at jane.doe@example.com or call 555‑123‑4567. Thanks!"  
+}  
+example_assistant_1 = {  
+    "role": "assistant",  
+    "content": "Email: jane.doe@example.com\nPhone: 555‑123‑4567"  
+}  
+
+# Example 2 – another demonstration of the desired output format  
+example_user_2 = {  
+    "role": "user",  
+    "content": "Hi, my new email is bob_smith@workmail.com and my number is (321) 654‑0987."  
+}  
+example_assistant_2 = {  
+    "role": "assistant",  
+    "content": "Email: bob_smith@workmail.com\nPhone: (321) 654‑0987"  
+}  
+
+# The actual query we want the model to process  
+new_query = {  
+    "role": "user",  
+    "content": "Hello, please contact me at alice@example.org or at 777-888-9999."  
+}  
+
+# Assemble the message list in order: system, examples, then the new query  
+messages = [system_msg, example_user_1, example_assistant_1, example_user_2, example_assistant_2, new_query]  
+
+# Call the chat completion endpoint with the assembled messages  
 response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",          # or "gpt-3.5-turbo"  
-    messages=few_shot_messages,  
-    temperature=0.0               # deterministic output for structured tasks  
+    model="gpt-4",  
+    messages=messages,  
+    temperature=0.0   # deterministic output for extraction tasks  
 )  
 
-# Extract and print the assistant's reply  
-assistant_reply = response["choices"][0]["message"]["content"]  
-print("Model output:", assistant_reply)  
+# Print the assistant's extraction result  
+print(response["choices"][0]["message"]["content"])  
 */
 
