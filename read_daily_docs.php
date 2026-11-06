@@ -1,204 +1,240 @@
 <?php
-// 2026-11-05 08:24:59
+// 2026-11-06 08:27:11
 
 /* PHP
-Topic: PHP PDO (PHP Data Objects) – Secure Database Access  
+Topic: Using Prepared Statements with PDO for Secure Database Access
 
 Explanation:  
-PDO provides a uniform interface for accessing many different databases, allowing you to switch drivers without changing your code.  
-It supports prepared statements, which separate SQL logic from data values and protect against SQL injection attacks.  
-PDO returns results as objects, associative arrays, or both, giving flexibility in how you process query output.  
-Error handling can be configured to throw exceptions, making debugging and logging more straightforward.  
-Using PDO also enables transaction control, letting you commit or roll back multiple statements as a single unit.  
+Prepared statements separate SQL code from data, preventing SQL injection attacks by treating user input as parameters rather than part of the query. PDO (PHP Data Objects) provides a consistent interface for interacting with many database systems, offering built‑in support for prepared statements. When a statement is prepared, the database parses the SQL once, and you can execute it multiple times with different parameter values. Binding parameters also helps with proper data type handling and can improve performance for repeated queries. This approach is considered best practice for any PHP application that interacts with a relational database.
 
-Code example (connecting to MySQL, inserting a record, and fetching data with prepared statements):  
-
+Code example (PHP):
 <?php
-// Data source name: includes driver, host, database name, and charset
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+// Create a new PDO instance (replace DSN, username, and password with your own values)
+$dsn = 'mysql:host=localhost;dbname=example_db;charset=utf8mb4';
+$username = 'db_user';
+$password = 'secure_password';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,   // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch results as associative arrays
+];
+$pdo = new PDO($dsn, $username, $password, $options);
 
-// Database credentials
-$username = 'dbuser';
-$password = 'dbpass';
+// Prepare an INSERT statement with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
+$stmt = $pdo->prepare($sql);
 
-try {
-    // Create a new PDO instance with exception mode enabled
-    $pdo = new PDO($dsn, $username, $password, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
+// Sample data that might come from a form or API
+$userData = [
+    'username' => 'johndoe',
+    'email'    => 'john@example.com',
+];
 
-    // Prepare an INSERT statement with placeholders
-    $stmt = $pdo->prepare('INSERT INTO users (email, name) VALUES (:email, :name)');
+// Bind the parameters and execute the statement
+$stmt->execute([
+    ':username' => $userData['username'],
+    ':email'    => $userData['email'],
+]);
 
-    // Bind values to the placeholders and execute
-    $stmt->execute([
-        ':email' => 'jane.doe@example.com',
-        ':name'  => 'Jane Doe'
-    ]);
-
-    // Prepare a SELECT statement to retrieve the inserted row
-    $select = $pdo->prepare('SELECT id, email, name FROM users WHERE email = :email');
-    $select->execute([':email' => 'jane.doe@example.com']);
-
-    // Fetch the result as an associative array
-    $user = $select->fetch();
-
-    // Output the retrieved data
-    echo 'User ID: ' . $user['id'] . PHP_EOL;
-    echo 'Email: ' . $user['email'] . PHP_EOL;
-    echo 'Name: ' . $user['name'] . PHP_EOL;
-
-} catch (PDOException $e) {
-    // Handle connection or query errors
-    echo 'Database error: ' . $e->getMessage();
-}
+// To retrieve the ID of the newly inserted row
+$newUserId = $pdo->lastInsertId();
+echo "New user created with ID: $newUserId";
 ?>
 */
 
 /* Laravel
-Topic: Implicit Route Model Binding
+Topic: Laravel Service Container and Automatic Dependency Injection  
 
 Explanation:  
-Laravel can automatically inject model instances into your controller methods based on route parameters.  
-When a route contains a parameter that matches a model's primary key, Laravel resolves the model behind the scenes.  
-If the record is not found, a 404 response is returned without additional code.  
-This feature reduces boilerplate and keeps controller actions clean and expressive.  
-You just need to type‑hint the model class in the method signature and name the route parameter accordingly.
+The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. When a class type‑hint is detected in a controller or another class’s constructor, the container resolves the required instance for you. This promotes loose coupling, easier testing, and clearer code organization. You can bind interfaces to concrete implementations in service providers, control the lifecycle (singleton vs. transient), and even inject primitive values. By leveraging the container, you let Laravel handle object creation, allowing you to focus on business logic.
 
-Code example (web.php):
-Route::get('posts/{post}', [App\Http\Controllers\PostController::class, 'show']);
+Code Example with Comments:  
 
-Controller (PostController.php):
 <?php
 namespace App\Http\Controllers;
 
-use App\Models\Post;
-use Illuminate\Http\Request;
+use App\Services\ReportService;
 
-class PostController extends Controller
+class ReportController extends Controller
 {
-    // Laravel will automatically resolve the Post model instance
-    // based on the {post} parameter from the route.
-    public function show(Post $post)
+    // The ReportService will be automatically injected by the service container.
+    public function __construct(ReportService $reportService)
     {
-        // $post is a fully hydrated model or a 404 is already sent.
-        return view('posts.show', ['post' => $post]);
+        $this->reportService = $reportService;
+    }
+
+    // Example action that uses the injected service.
+    public function index()
+    {
+        $data = $this->reportService->generateMonthlyReport();
+        return view('reports.index', compact('data'));
     }
 }
-?>
+
+<?php
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use App\Services\ReportService;
+use App\Repositories\ReportRepository;
+
+class AppServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind an interface to a concrete class so the container can resolve it.
+        $this->app->bind(ReportRepository::class, function ($app) {
+            // Here you could inject configuration or other dependencies.
+            return new ReportRepository($app['config']['database.connections.mysql']);
+        });
+
+        // Register the ReportService as a singleton; the same instance will be reused.
+        $this->app->singleton(ReportService::class, function ($app) {
+            // Resolve the repository from the container and inject it.
+            return new ReportService($app->make(ReportRepository::class));
+        });
+    }
+}
+
+<?php
+namespace App\Services;
+
+use App\Repositories\ReportRepository;
+
+class ReportService
+{
+    protected $repo;
+
+    // The repository is injected by the container via the service provider binding.
+    public function __construct(ReportRepository $repo)
+    {
+        $this->repo = $repo;
+    }
+
+    // Business logic method that retrieves and formats data.
+    public function generateMonthlyReport()
+    {
+        // Pull data via the repository and return it.
+        return $this->repo->getMonthlyData();
+    }
+}
 */
 
 /* MySQL
-MySQL Topic: Stored Procedures with Input Parameters
+MySQL Topic: Indexes – Types and Usage  
 
-Explanation:
-Stored procedures are precompiled collections of SQL statements that reside on the MySQL server. They allow you to encapsulate complex logic, reduce client‑server round trips, and enforce consistent data processing. By accepting input parameters, a procedure can be reused for different values without rewriting the query each time. This improves performance because the execution plan is cached after the first call. Proper use of delimiters is required when defining a procedure that contains multiple statements.
+Explanation:  
+Indexes are special lookup tables that the MySQL optimizer uses to speed up data retrieval.  
+A primary key automatically creates a unique index, while secondary indexes can be added on one or more columns.  
+MySQL supports several index types, such as B‑Tree (default), Full‑Text, and Hash (used in MEMORY tables).  
+Choosing the right index reduces full table scans, but excessive or poorly chosen indexes can degrade write performance.  
+Understanding when to use composite indexes versus single‑column indexes is key to optimal query performance.  
 
-Code Example (with comments):
+Example code (with comments):  
 
-DROP PROCEDURE IF EXISTS GetCustomerOrders;   -- Remove any existing version of the procedure
-DELIMITER $$                                 -- Change delimiter to allow semicolons inside the procedure
-CREATE PROCEDURE GetCustomerOrders(IN p_customer_id INT)   -- Define procedure with one input parameter
-BEGIN
-    SELECT o.order_id,                     -- Order identifier
-           o.order_date,                   -- Date the order was placed
-           o.total_amount                  -- Total value of the order
-    FROM orders o
-    WHERE o.customer_id = p_customer_id   -- Filter orders for the supplied customer ID
-    ORDER BY o.order_date DESC;           -- Show newest orders first
-END$$                                         -- End of procedure definition
-DELIMITER ;                                   -- Restore default delimiter
+CREATE TABLE employees (  
+    emp_id INT AUTO_INCREMENT,  
+    first_name VARCHAR(50) NOT NULL,  
+    last_name VARCHAR(50) NOT NULL,  
+    department_id INT NOT NULL,  
+    hire_date DATE NOT NULL,  
+    PRIMARY KEY (emp_id)                     -- primary key creates a unique B‑Tree index  
+) ENGINE=InnoDB;  
 
--- Example call to the procedure:
-CALL GetCustomerOrders(42);   -- Retrieves all orders for the customer whose ID is 42.
+-- Create a non‑unique index on department_id to speed up department lookups  
+CREATE INDEX idx_department ON employees (department_id);  
+
+-- Create a composite index on last_name and first_name for fast name searches  
+CREATE INDEX idx_name ON employees (last_name, first_name);  
+
+-- Example query that benefits from the idx_name composite index  
+SELECT emp_id, hire_date  
+FROM employees  
+WHERE last_name = 'Smith' AND first_name = 'John';  
+
+-- Example query that uses the idx_department index  
+SELECT COUNT(*) AS dept_count  
+FROM employees  
+WHERE department_id = 5;  
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: JavaScript Closures  
 
 Explanation:  
-A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This happens because the inner function forms a lexical binding to the environment where it was created. Closures are useful for data encapsulation, creating private state, and implementing function factories. They enable patterns such as memoization, partial application, and module-like structures without the need for classes. Understanding closures helps avoid common pitfalls like unintended shared references in loops.  
+- A closure is a function that retains access to its lexical scope even when executed outside that scope.  
+- It allows inner functions to remember the environment in which they were created, including variables from the outer function.  
+- Closures are useful for data encapsulation, creating private variables, and implementing function factories.  
+- Each time the outer function runs, a new closure is formed, preserving its own set of captured variables.  
+- Be mindful of memory usage, as closures keep referenced variables alive for the life of the inner function.  
 
-Code example (with comments):  
-function makeCounter(start) {                     // outer function creates a private variable  
-    let count = start;                            // this variable is captured by the inner function  
+Code example with comments:  
 
-    return function() {                          // the inner function forms a closure  
-        count += 1;                               // can read and modify the private count  
-        return count;                             // expose the updated value to the caller  
-    };                                            // end of inner function  
-}                                                 // end of outer function  
+function makeCounter() {                     // outer function creates a private count variable  
+    let count = 0;                           // this variable is captured by the inner function  
 
-const counterA = makeCounter(0);  // each call gets its own independent closure  
-const counterB = makeCounter(10);  
+    return function() {                      // the inner function forms a closure over count  
+        count++;                             // modify the captured variable  
+        console.log('Current count:', count); // access the updated value  
+    };                                       // the returned function retains access to count  
+}                                            // end of makeCounter  
 
-console.log(counterA()); // 1 – count is now 1, private to counterA  
-console.log(counterA()); // 2 – increments the same private count  
-console.log(counterB()); // 11 – separate closure, starts from 10  
-console.log(counterB()); // 12 – continues its own private count  
+const counterA = makeCounter(); // each call creates a separate closure with its own count  
+counterA(); // Output: Current count: 1  
+counterA(); // Output: Current count: 2  
+
+const counterB = makeCounter(); // a new independent closure  
+counterB(); // Output: Current count: 1  
+counterA(); // Output: Current count: 3   (counterA's count continues from where it left off)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with GPT‑4  
+Topic: Prompt Engineering for Few‑Shot Learning with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small number of example input‑output pairs inside the same request, steering it toward a desired behavior.  
-It is especially effective for tasks that require a consistent format, such as extracting fields from text, translating structured data, or generating boilerplate code.  
-Choosing clear, representative examples helps the model generalize the pattern while keeping hallucinations low.  
-The prompt typically combines a system instruction, several user‑assistant example messages, and finally the new user query.  
-When using the OpenAI chat completion API, these messages are passed as a list of dictionaries, each with a role ("system", "user", "assistant") and content.
+1. Few‑shot prompting supplies a small number of input‑output examples inside the prompt, allowing a language model to infer the desired pattern without fine‑tuning.  
+2. Careful structuring of examples—consistent formatting, clear separators, and explicit instructions—helps the model generalize correctly.  
+3. The temperature parameter should be lowered (e.g., 0.2) to reduce randomness and keep responses deterministic for classification tasks.  
+4. Including a “Task:” line at the start and a “Answer:” cue before the model’s reply improves alignment and extraction of the final output.  
+5. This technique works across domains such as code generation, data extraction, and text classification, making it a versatile tool for developers.  
 
-Code example (Python, using the openai library):  
+Python code example (requires `openai` library, set your API key in the environment):  
 
+import os  
 import openai  
 
-# Set your API key – replace with your actual key or configure via environment variable  
-openai.api_key = "YOUR_API_KEY"  
+# Load API key from environment variable  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define the system instruction that sets the overall behavior  
-system_msg = {  
-    "role": "system",  
-    "content": "You are a helpful assistant that extracts contact information from informal emails."  
-}  
+def classify_sentiment(text):  
+    # Define a few‑shot prompt with two examples and a placeholder for the new input  
+    prompt = (  
+        "Task: Classify the sentiment of the given sentence as Positive, Negative, or Neutral.\n\n"  
+        "Example 1:\n"  
+        "Sentence: I love the new features in the app!\n"  
+        "Answer: Positive\n\n"  
+        "Example 2:\n"  
+        "Sentence: The update caused many crashes and is unusable.\n"  
+        "Answer: Negative\n\n"  
+        "Now classify this sentence:\n"  
+        f"Sentence: {text}\n"  
+        "Answer:"  
+    )  
 
-# Example 1 – user provides an email, assistant extracts the data  
-example_user_1 = {  
-    "role": "user",  
-    "content": "Hey team, you can reach me at jane.doe@example.com or call 555‑123‑4567. Thanks!"  
-}  
-example_assistant_1 = {  
-    "role": "assistant",  
-    "content": "Email: jane.doe@example.com\nPhone: 555‑123‑4567"  
-}  
+    response = openai.ChatCompletion.create(  
+        model="gpt-4o-mini",                # lightweight model suitable for prompting  
+        messages=[{"role": "user", "content": prompt}],  
+        temperature=0.2,                     # low randomness for consistent classification  
+        max_tokens=10                        # we only need a short label  
+    )  
 
-# Example 2 – another demonstration of the desired output format  
-example_user_2 = {  
-    "role": "user",  
-    "content": "Hi, my new email is bob_smith@workmail.com and my number is (321) 654‑0987."  
-}  
-example_assistant_2 = {  
-    "role": "assistant",  
-    "content": "Email: bob_smith@workmail.com\nPhone: (321) 654‑0987"  
-}  
+    # Extract the model's answer and strip whitespace  
+    answer = response.choices[0].message.content.strip()  
+    return answer  
 
-# The actual query we want the model to process  
-new_query = {  
-    "role": "user",  
-    "content": "Hello, please contact me at alice@example.org or at 777-888-9999."  
-}  
-
-# Assemble the message list in order: system, examples, then the new query  
-messages = [system_msg, example_user_1, example_assistant_1, example_user_2, example_assistant_2, new_query]  
-
-# Call the chat completion endpoint with the assembled messages  
-response = openai.ChatCompletion.create(  
-    model="gpt-4",  
-    messages=messages,  
-    temperature=0.0   # deterministic output for extraction tasks  
-)  
-
-# Print the assistant's extraction result  
-print(response["choices"][0]["message"]["content"])  
+# Example usage  
+if __name__ == "__main__":  
+    test_sentence = "The customer support was helpful and resolved my issue quickly."  
+    sentiment = classify_sentiment(test_sentence)  
+    print(f"Sentiment: {sentiment}")  
 */
 
