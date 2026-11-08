@@ -1,241 +1,246 @@
 <?php
-// 2026-11-07 07:42:37
+// 2026-11-08 07:53:24
 
 /* PHP
-Topic: Using PDO for Secure Database Queries (Prepared Statements)
+PHP Topic: PDO Prepared Statements  
 
-Explanation:
-The PHP Data Objects (PDO) extension provides a consistent interface for accessing databases. By using prepared statements, you separate SQL code from data, which protects against SQL injection attacks. PDO supports named or positional placeholders, allowing you to bind values safely. It also offers error handling via exceptions, making debugging easier. Using PDO makes your code portable across different database systems with minimal changes.
+Explanation:  
+Prepared statements in PDO allow you to execute the same SQL query multiple times with different parameters while keeping the query structure separate from the data. This separation helps protect against SQL injection, because user‑supplied values are sent to the database engine separately from the SQL code. PDO also provides a consistent API for different database drivers, making your code portable. You can bind parameters by position or by name, and you can fetch results in various formats. Using prepared statements also improves performance when the same query is run many times, because the database can reuse the execution plan.
 
-Code example (MySQL connection and a SELECT query with prepared statement):
+Code example (with comments):
 <?php
-// Enable exceptions for PDO errors
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
+// Create a new PDO instance (replace DSN, username, password with your own)
+$dsn = 'mysql:host=localhost;dbname=sample_db;charset=utf8mb4';
+$username = 'db_user';
+$password = 'db_pass';
+$options = [
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // Fetch rows as associative arrays
+];
+$pdo = new PDO($dsn, $username, $password, $options);
 
-try {
-    $pdo = new PDO($dsn, $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+// Prepare an INSERT statement with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
+$stmt = $pdo->prepare($sql);
 
-    // Prepare a SELECT statement with a named placeholder
-    $sql = 'SELECT id, name, email FROM users WHERE status = :status';
-    $stmt = $pdo->prepare($sql);
+// Bind values to the placeholders and execute
+$stmt->execute([
+    ':username' => 'alice',
+    ':email'    => 'alice@example.com'
+]);
 
-    // Bind the placeholder to a value (e.g., active users)
-    $status = 'active';
-    $stmt->bindParam(':status', $status, PDO::PARAM_STR);
+// Prepare a SELECT statement with a positional placeholder
+$selectSql = 'SELECT id, username, email FROM users WHERE id > ?';
+$selectStmt = $pdo->prepare($selectSql);
 
-    // Execute the query
-    $stmt->execute();
+// Execute the statement with a parameter (e.g., fetch users with id > 10)
+$selectStmt->execute([10]);
 
-    // Fetch all matching rows as an associative array
-    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// Fetch all matching rows
+$users = $selectStmt->fetchAll();
 
-    // Iterate over the result set
-    foreach ($users as $user) {
-        echo 'ID: ' . $user['id'] . "\n";
-        echo 'Name: ' . $user['name'] . "\n";
-        echo 'Email: ' . $user['email'] . "\n\n";
-    }
-} catch (PDOException $e) {
-    // Handle connection or query errors
-    echo 'Database error: ' . $e->getMessage();
+foreach ($users as $user) {
+    // Output each user's information
+    echo "ID: {$user['id']}, Username: {$user['username']}, Email: {$user['email']}\n";
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Dependency Injection  
+Topic: Laravel Queues and Jobs
 
-Explanation:  
-The service container is the core of Laravel’s inversion of control (IoC) system. It manages class dependencies and performs automatic resolution, allowing you to type‑hint classes in constructors or controller methods. By binding abstractions to concrete implementations, you can swap functionality without changing the consuming code. This promotes loose coupling and makes unit testing easier, as mock implementations can be injected. The container also supports contextual bindings, singleton bindings, and binding callbacks for advanced scenarios.  
+Explanation: 
+Laravel queues allow you to defer time‑consuming tasks, such as sending emails or processing files, to a background process. By pushing jobs onto a queue, the main request can respond quickly while the work is handled asynchronously. Laravel supports multiple queue drivers (database, Redis, SQS, etc.) and provides a unified API to dispatch and process jobs. Jobs are simple PHP classes that implement the ShouldQueue contract and contain a handle method where the task logic resides. Workers listen to the queue and execute jobs, optionally retrying on failure according to your configuration.
 
-Code example (binding an interface and resolving it via a controller):
+Code example:
 
 <?php
-namespace App\Contracts;
 
-interface PaymentGateway
+namespace App\Jobs;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use App\Mail\WelcomeMail;
+use Mail;
+
+/**
+ * This job sends a welcome email to a newly registered user.
+ */
+class SendWelcomeEmail implements ShouldQueue
 {
-    public function charge(float $amount);
-}
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-namespace App\Services;
+    protected $userEmail;
 
-use App\Contracts\PaymentGateway;
-
-class StripeGateway implements PaymentGateway
-{
-    // Charge a customer using Stripe's API
-    public function charge(float $amount)
+    /**
+     * Create a new job instance.
+     *
+     * @param string $userEmail
+     * @return void
+     */
+    public function __construct(string $userEmail)
     {
-        // Imagine a real Stripe API call here
-        return "Charged $$amount with Stripe.";
+        // Store the recipient's email address for later use
+        $this->userEmail = $userEmail;
+    }
+
+    /**
+     * Execute the job.
+     *
+     * @return void
+     */
+    public function handle()
+    {
+        // Build and send the welcome email
+        Mail::to($this->userEmail)->send(new WelcomeMail());
     }
 }
 
-namespace App\Providers;
+// Dispatching the job from a controller or service
+use App\Jobs\SendWelcomeEmail;
 
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripeGateway;
+// Example: after a user registers successfully
+SendWelcomeEmail::dispatch($newUser->email);
 
-class AppServiceProvider extends ServiceProvider
-{
-    public function register()
-    {
-        // Bind the interface to a concrete class; use singleton if you want a single instance
-        $this->app->bind(PaymentGateway::class, StripeGateway::class);
-    }
-}
+// To start processing jobs, run the queue worker (e.g., using Redis driver):
+// php artisan queue:work redis --tries=3
 
-namespace App\Http\Controllers;
-
-use App\Contracts\PaymentGateway;
-use Illuminate\Http\Request;
-
-class PaymentController extends Controller
-{
-    protected $gateway;
-
-    // The service container automatically injects the concrete implementation
-    public function __construct(PaymentGateway $gateway)
-    {
-        $this->gateway = $gateway;
-    }
-
-    public function charge(Request $request)
-    {
-        $amount = $request->input('amount');
-        // Use the injected gateway to process the payment
-        $result = $this->gateway->charge($amount);
-        return response()->json(['message' => $result]);
-    }
-}
 ?>
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures
+Topic: Common Table Expressions (CTEs) in MySQL  
 
 Explanation:  
-A stored procedure is a reusable set of SQL statements that can be stored in the database and executed with a single call. It allows you to encapsulate complex logic, reduce client‑server round trips, and improve performance by pre‑compiling the statements. Parameters can be passed in and out, enabling flexible data processing. Stored procedures support control‑flow constructs such as IF, CASE, LOOP, and CURSOR, making them suitable for business logic. Proper use can also enhance security by restricting direct table access and granting execute rights only.
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and can be recursive, allowing you to perform hierarchical queries such as organizational charts or bill‑of‑materials.  
+They improve readability by separating complex subqueries from the main query logic.  
+MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.  
+CTEs exist only for the duration of the statement that defines them; they are not stored as permanent objects.
 
-Code Example:
-
-CREATE DATABASE IF NOT EXISTS demo_db;
-USE demo_db;
-
--- Create a sample table
-CREATE TABLE IF NOT EXISTS employees (
-    emp_id INT AUTO_INCREMENT PRIMARY KEY,
-    first_name VARCHAR(50),
-    last_name VARCHAR(50),
-    salary DECIMAL(10,2)
-);
-
--- Insert some test data
-INSERT INTO employees (first_name, last_name, salary) VALUES
-('Alice', 'Smith', 60000),
-('Bob',   'Johnson', 75000),
-('Carol', 'Williams', 82000);
-
--- Define a stored procedure to give a raise
-DELIMITER $$
-
-CREATE PROCEDURE give_raise (
-    IN p_emp_id INT,
-    IN p_percent DECIMAL(5,2)
-)
-BEGIN
-    -- Calculate the new salary
-    UPDATE employees
-    SET salary = salary + (salary * p_percent / 100)
-    WHERE emp_id = p_emp_id;
-END $$
-
-DELIMITER ;
-
--- Call the procedure to give employee #2 a 10% raise
-CALL give_raise(2, 10);
-
--- Verify the update
-SELECT emp_id, first_name, last_name, salary FROM employees;
+Code example (non‑recursive CTE that calculates total sales per product and then filters high‑value items):
+  
+WITH product_sales AS (  
+    SELECT p.id AS product_id, p.name AS product_name, SUM(o.quantity * o.unit_price) AS total_sales  
+    FROM products p  
+    JOIN orders o ON p.id = o.product_id  
+    GROUP BY p.id, p.name  
+)  
+SELECT product_id, product_name, total_sales  
+FROM product_sales  
+WHERE total_sales > 10000  
+ORDER BY total_sales DESC;   (The WITH clause defines the CTE, which is then queried in the final SELECT)
 */
 
 /* JavaScript
-Topic: Closures and Lexical Scoping
+Topic: Closures and the Module Pattern
 
 Explanation:  
-A closure is a function that retains access to the variables of its outer (enclosing) scope even after that outer function has finished executing. JavaScript creates closures automatically whenever a function is defined inside another function, allowing the inner function to “remember” the environment in which it was created. This mechanism enables patterns such as data encapsulation, function factories, and private state. Because closures capture variables by reference, changes to those variables are reflected across all closures that share them. Understanding closures is essential for writing efficient asynchronous code and avoiding common pitfalls like unintentionally retaining large objects in memory.
+A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. By leveraging closures you can create private state that is not directly reachable from the global scope. The module pattern packages related functionality together, exposing only the methods you want public while keeping internal variables hidden. This approach improves encapsulation, prevents naming collisions, and makes code easier to maintain. It is especially useful in large codebases where you want to avoid polluting the global namespace.
 
 Code example with comments:  
+function createCounter() {  
+    let count = 0; // private variable, not accessible from outside the module  
+    return {  
+        increment: function() {  
+            count++;          // modifies the private count  
+            return count;     // returns the updated value  
+        },  
+        decrement: function() {  
+            count--;          // modifies the private count  
+            return count;     // returns the updated value  
+        },  
+        getValue: function() {  
+            return count;     // provides read‑only access to the current count  
+        }  
+    }; // the returned object forms the public API of the module  
+}  
 
-function makeCounter(initialValue) {          // outer function creates a private variable
-    let count = initialValue;                 // this variable is captured by the inner function
-    return function increment(step = 1) {    // inner function forms a closure over `count`
-        count += step;                        // modifies the captured variable
-        console.log('Current count:', count);
-        return count;                         // expose the new value if needed
-    };
-}
+const counter = createCounter(); // creates a new independent counter instance  
 
-const counterA = makeCounter(0);              // each call gets its own independent closure
-const counterB = makeCounter(10);
+console.log(counter.increment()); // 1  
+console.log(counter.increment()); // 2  
+console.log(counter.decrement()); // 1  
+console.log(counter.getValue());  // 1  
 
-counterA();   // Current count: 1
-counterA(5);  // Current count: 6
-counterB();   // Current count: 11
-counterB(2);  // Current count: 13
-
-// Even after makeCounter has returned, the inner `increment` functions still have access
-// to their respective `count` variables because of the closure.
+// Trying to access 'count' directly would result in undefined:
+// console.log(counter.count); // undefined (private)  
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering for GPT‑3.5  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s ChatCompletion API
 
 Explanation:  
-1. Few‑shot prompting supplies the model with example input‑output pairs before the actual query, guiding it toward the desired format.  
-2. The technique reduces the need for extensive fine‑tuning while achieving higher consistency on specialized tasks.  
-3. Selecting diverse yet representative examples is crucial; they should illustrate the pattern you expect the model to follow.  
-4. The prompt is built as a single string where examples are concatenated, ending with the new user request.  
-5. When using the OpenAI API, set temperature low (e.g., 0.2) to favor deterministic, example‑driven responses.  
+Few‑shot prompting injects a small set of example input‑output pairs directly into the prompt, guiding the model toward the desired format and style. By carefully curating examples that cover edge cases, you can reduce the need for post‑processing and improve consistency. This technique works well for tasks such as data extraction, code generation, or natural‑language transformations. The prompt is constructed as a single string, mixing system instructions, examples, and the user query. Adjusting the number and diversity of examples lets you trade off token usage against output quality.
 
-Code example (Python, using OpenAI's API):  
+Code example (Python, using the openai library):
+import os
+import openai
 
-import os  
-import openai  
+# Load your API key from an environment variable for safety
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Load your API key from an environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+def extract_dates(text):
+    """
+    Use a few‑shot prompt to ask the model to list all dates found in the input text.
+    """
+    # Define the system message that sets the overall behavior
+    system_msg = {
+        "role": "system",
+        "content": "You are a helpful assistant that extracts dates from a sentence and returns them as a JSON array."
+    }
 
-# Define few‑shot examples for a simple math word‑problem solver  
-examples = [  
-    "Problem: John has 3 apples and buys 2 more. How many apples does he have now?\nAnswer: 5",  
-    "Problem: A train travels 120 km in 2 hours. What is its average speed in km/h?\nAnswer: 60",  
-    "Problem: Sarah reads 15 pages each day. After 4 days, how many pages has she read?\nAnswer: 60"  
-]  
+    # Provide two illustrative examples (few‑shot)
+    example_user_1 = {
+        "role": "user",
+        "content": "The conference will be held on March 12, 2025 and the deadline is 01/15/2025."
+    }
+    example_assistant_1 = {
+        "role": "assistant",
+        "content": '["2025-03-12", "2025-01-15"]'
+    }
+    example_user_2 = {
+        "role": "user",
+        "content": "Our launch dates are 7th July 2023, 08/08/2023, and next year."
+    }
+    example_assistant_2 = {
+        "role": "assistant",
+        "content": '["2023-07-07", "2023-08-08"]'
+    }
 
-# New problem we want the model to answer  
-new_problem = "Problem: A bakery sells 8 loaves of bread each morning and 5 each afternoon. How many loaves are sold in a day?\nAnswer:"  
+    # The actual user query we want to process
+    query_msg = {
+        "role": "user",
+        "content": f"Extract all dates from the following text:\n{text}"
+    }
 
-# Construct the full prompt by joining examples and the new problem  
-prompt = "\n\n".join(examples) + "\n\n" + new_problem  
+    # Assemble the message list in order
+    messages = [
+        system_msg,
+        example_user_1,
+        example_assistant_1,
+        example_user_2,
+        example_assistant_2,
+        query_msg
+    ]
 
-# Call the ChatCompletion endpoint with a low temperature for deterministic output  
-response = openai.ChatCompletion.create(  
-    model="gpt-3.5-turbo",  
-    messages=[{"role": "user", "content": prompt}],  
-    temperature=0.2,  
-    max_tokens=20,  
-    n=1,  
-    stop=None  
-)  
+    # Call the ChatCompletion endpoint
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",      # lightweight model suitable for this task
+        messages=messages,
+        temperature=0.0,          # deterministic output for extraction
+        max_tokens=100
+    )
 
-# Extract and print the answer part of the response  
-answer = response.choices[0].message.content.strip()  
-print("Model answer:", answer)  
+    # The model's answer is in the first choice's message content
+    return response.choices[0].message.content.strip()
+
+# Example usage
+sample_text = "Our meetings are scheduled for 12/01/2024, 15th Feb 2025, and sometime in 2026."
+extracted = extract_dates(sample_text)
+print("Extracted dates:", extracted)
 */
 
