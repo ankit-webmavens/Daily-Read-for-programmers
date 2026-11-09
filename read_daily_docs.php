@@ -1,61 +1,68 @@
 <?php
-// 2026-11-08 07:53:24
+// 2026-11-09 08:37:34
 
 /* PHP
-PHP Topic: PDO Prepared Statements  
+PHP PDO (PHP Data Objects) for Secure Database Access
+The PDO extension provides a consistent interface for accessing different databases (MySQL, PostgreSQL, SQLite, etc.) using the same functions.
+It supports prepared statements, which protect against SQL injection by separating query structure from data.
+PDO allows you to fetch results as associative arrays, objects, or both, giving flexibility in handling result sets.
+Error handling can be set to throw exceptions, making debugging and error management more straightforward.
+Using PDO encourages clean, reusable code and makes it easier to switch database drivers without rewriting queries.
 
-Explanation:  
-Prepared statements in PDO allow you to execute the same SQL query multiple times with different parameters while keeping the query structure separate from the data. This separation helps protect against SQL injection, because user‑supplied values are sent to the database engine separately from the SQL code. PDO also provides a consistent API for different database drivers, making your code portable. You can bind parameters by position or by name, and you can fetch results in various formats. Using prepared statements also improves performance when the same query is run many times, because the database can reuse the execution plan.
-
-Code example (with comments):
 <?php
-// Create a new PDO instance (replace DSN, username, password with your own)
-$dsn = 'mysql:host=localhost;dbname=sample_db;charset=utf8mb4';
-$username = 'db_user';
-$password = 'db_pass';
+// Database connection parameters
+$host = 'localhost';
+$db   = 'example_db';
+$user = 'db_user';
+$pass = 'db_password';
+$charset = 'utf8mb4';
+
+// Data Source Name (DSN) tells PDO which driver and database to use
+$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+
+// PDO options improve error handling and performance
 $options = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // Fetch rows as associative arrays
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // Return rows as associative arrays
+    PDO::ATTR_EMULATE_PREPARES   => false,                  // Use native prepared statements
 ];
-$pdo = new PDO($dsn, $username, $password, $options);
 
-// Prepare an INSERT statement with named placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
-$stmt = $pdo->prepare($sql);
+try {
+    // Create a new PDO instance (establishes the connection)
+    $pdo = new PDO($dsn, $user, $pass, $options);
+} catch (PDOException $e) {
+    // Handle connection errors gracefully
+    die('Connection failed: ' . $e->getMessage());
+}
 
-// Bind values to the placeholders and execute
-$stmt->execute([
-    ':username' => 'alice',
-    ':email'    => 'alice@example.com'
-]);
-
-// Prepare a SELECT statement with a positional placeholder
-$selectSql = 'SELECT id, username, email FROM users WHERE id > ?';
-$selectStmt = $pdo->prepare($selectSql);
-
-// Execute the statement with a parameter (e.g., fetch users with id > 10)
-$selectStmt->execute([10]);
+// Example of a prepared SELECT statement
+$sql = 'SELECT id, name, email FROM users WHERE status = :status';
+$stmt = $pdo->prepare($sql);               // Prepare the query template
+$stmt->execute(['status' => 'active']);    // Bind value and execute
 
 // Fetch all matching rows
-$users = $selectStmt->fetchAll();
+$users = $stmt->fetchAll();
 
 foreach ($users as $user) {
     // Output each user's information
-    echo "ID: {$user['id']}, Username: {$user['username']}, Email: {$user['email']}\n";
+    echo "ID: {$user['id']}, Name: {$user['name']}, Email: {$user['email']}\n";
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues and Jobs
+Laravel Topic: Queues and Background Jobs  
 
-Explanation: 
-Laravel queues allow you to defer time‑consuming tasks, such as sending emails or processing files, to a background process. By pushing jobs onto a queue, the main request can respond quickly while the work is handled asynchronously. Laravel supports multiple queue drivers (database, Redis, SQS, etc.) and provides a unified API to dispatch and process jobs. Jobs are simple PHP classes that implement the ShouldQueue contract and contain a handle method where the task logic resides. Workers listen to the queue and execute jobs, optionally retrying on failure according to your configuration.
+Explanation:  
+Laravel queues allow time‑consuming tasks such as sending emails, processing uploads, or generating reports to be performed asynchronously, keeping the HTTP response fast.  
+A job class encapsulates the logic that should run in the background, while a queue worker processes pending jobs from the chosen driver (database, Redis, SQS, etc.).  
+Jobs can be dispatched immediately, delayed, or chained together for complex workflows.  
+Laravel provides helper methods to retry failed jobs, monitor queue health, and handle failures gracefully.  
+Using queues also helps scale applications horizontally by adding more workers without changing the core code.  
 
-Code example:
+Code Example (Job class and dispatch):  
 
 <?php
-
 namespace App\Jobs;
 
 use Illuminate\Bus\Queueable;
@@ -64,183 +71,213 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use App\Mail\WelcomeMail;
-use Mail;
+use Illuminate\Support\Facades\Mail;
 
-/**
- * This job sends a welcome email to a newly registered user.
- */
 class SendWelcomeEmail implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $userEmail;
+    protected $user; // The user instance to receive the email
 
-    /**
-     * Create a new job instance.
-     *
-     * @param string $userEmail
-     * @return void
-     */
-    public function __construct(string $userEmail)
+    // Job receives data via constructor
+    public function __construct($user)
     {
-        // Store the recipient's email address for later use
-        $this->userEmail = $userEmail;
+        $this->user = $user;
     }
 
-    /**
-     * Execute the job.
-     *
-     * @return void
-     */
+    // This method is called by the queue worker
     public function handle()
     {
-        // Build and send the welcome email
-        Mail::to($this->userEmail)->send(new WelcomeMail());
+        // Send the welcome email using a Mailable class
+        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
+    }
+
+    // Optional: Define how many times the job may be retried
+    public function retryUntil()
+    {
+        return now()->addMinutes(5);
     }
 }
 
-// Dispatching the job from a controller or service
+// Dispatching the job from a controller or any other place
 use App\Jobs\SendWelcomeEmail;
 
-// Example: after a user registers successfully
-SendWelcomeEmail::dispatch($newUser->email);
+public function register(Request $request)
+{
+    // Validate and create the user...
+    $user = User::create($request->all());
 
-// To start processing jobs, run the queue worker (e.g., using Redis driver):
-// php artisan queue:work redis --tries=3
+    // Dispatch the email job to the default queue
+    SendWelcomeEmail::dispatch($user);
 
+    // Or dispatch with a delay of 2 minutes
+    // SendWelcomeEmail::dispatch($user)->delay(now()->addMinutes(2));
+
+    return response()->json(['message' => 'User registered, welcome email queued.']);
+}
 ?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) in MySQL  
+Topic: Common Table Expressions (CTE) and Recursive Queries
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and can be recursive, allowing you to perform hierarchical queries such as organizational charts or bill‑of‑materials.  
-They improve readability by separating complex subqueries from the main query logic.  
-MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.  
-CTEs exist only for the duration of the statement that defines them; they are not stored as permanent objects.
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It improves query readability by allowing you to define subqueries with a name and refer to them multiple times. CTEs are defined using the WITH clause and can be either non‑recursive or recursive. Recursive CTEs are useful for traversing hierarchical data such as organization charts or folder structures. The recursion stops when the CTE’s anchor query no longer produces rows, preventing infinite loops.
 
-Code example (non‑recursive CTE that calculates total sales per product and then filters high‑value items):
+Code Example with Comments:  
+WITH RECURSIVE org_chart AS (  
+    -- Anchor member: select the top‑level manager(s)  
+    SELECT employee_id, manager_id, employee_name, 1 AS level  
+    FROM employees  
+    WHERE manager_id IS NULL  
   
-WITH product_sales AS (  
-    SELECT p.id AS product_id, p.name AS product_name, SUM(o.quantity * o.unit_price) AS total_sales  
-    FROM products p  
-    JOIN orders o ON p.id = o.product_id  
-    GROUP BY p.id, p.name  
+    UNION ALL  
+  
+    -- Recursive member: find employees reporting to the current level  
+    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1 AS level  
+    FROM employees e  
+    INNER JOIN org_chart oc ON e.manager_id = oc.employee_id  
 )  
-SELECT product_id, product_name, total_sales  
-FROM product_sales  
-WHERE total_sales > 10000  
-ORDER BY total_sales DESC;   (The WITH clause defines the CTE, which is then queried in the final SELECT)
+SELECT employee_id, manager_id, employee_name, level  
+FROM org_chart  
+ORDER BY level, manager_id;  
 */
 
 /* JavaScript
-Topic: Closures and the Module Pattern
+Topic: Closures in JavaScript
 
-Explanation:  
-A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. By leveraging closures you can create private state that is not directly reachable from the global scope. The module pattern packages related functionality together, exposing only the methods you want public while keeping internal variables hidden. This approach improves encapsulation, prevents naming collisions, and makes code easier to maintain. It is especially useful in large codebases where you want to avoid polluting the global namespace.
+Explanation:
+A closure is created when an inner function retains access to the variables of its outer (enclosing) function after that outer function has finished executing. This allows the inner function to preserve state between calls without using global variables. Closures are fundamental for data encapsulation, partial application, and implementing private members in objects. They are formed automatically whenever a function is defined inside another function and the inner function references variables from the outer scope. Understanding closures helps avoid common pitfalls such as unintended memory leaks and stale references.
 
-Code example with comments:  
-function createCounter() {  
-    let count = 0; // private variable, not accessible from outside the module  
-    return {  
-        increment: function() {  
-            count++;          // modifies the private count  
-            return count;     // returns the updated value  
-        },  
-        decrement: function() {  
-            count--;          // modifies the private count  
-            return count;     // returns the updated value  
-        },  
-        getValue: function() {  
-            return count;     // provides read‑only access to the current count  
-        }  
-    }; // the returned object forms the public API of the module  
-}  
+Code example with comments:
+function makeCounter() {
+    // Private variable that will be captured by the inner function
+    var count = 0;
 
-const counter = createCounter(); // creates a new independent counter instance  
+    // The inner function forms a closure over 'count'
+    return function() {
+        // Increment the private count each time the returned function is called
+        count++;
+        console.log('Current count:', count);
+    };
+}
 
-console.log(counter.increment()); // 1  
-console.log(counter.increment()); // 2  
-console.log(counter.decrement()); // 1  
-console.log(counter.getValue());  // 1  
+// Create a new counter instance
+var counterA = makeCounter();
 
-// Trying to access 'count' directly would result in undefined:
-// console.log(counter.count); // undefined (private)  
+counterA(); // Current count: 1
+counterA(); // Current count: 2
+
+// Create a second, independent counter
+var counterB = makeCounter();
+
+counterB(); // Current count: 1
+counterA(); // Current count: 3   (counterA maintains its own separate state)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s ChatCompletion API
+Topic: Neural Style Transfer with PyTorch  
 
 Explanation:  
-Few‑shot prompting injects a small set of example input‑output pairs directly into the prompt, guiding the model toward the desired format and style. By carefully curating examples that cover edge cases, you can reduce the need for post‑processing and improve consistency. This technique works well for tasks such as data extraction, code generation, or natural‑language transformations. The prompt is constructed as a single string, mixing system instructions, examples, and the user query. Adjusting the number and diversity of examples lets you trade off token usage against output quality.
+Neural style transfer (NST) blends the artistic style of one image with the content of another by optimizing a generated image to match the high‑level features of the content image and the Gram‑matrix statistics of the style image. The approach uses a pretrained convolutional network (e.g., VGG‑19) to extract feature maps at multiple layers. Content loss measures the difference between the generated and content feature activations, while style loss measures the difference between their Gram matrices. By iteratively updating the generated image with gradient descent, the result gradually adopts the visual texture of the style image while preserving the original scene layout. PyTorch’s autograd makes the optimization loop concise and GPU‑accelerated.
 
-Code example (Python, using the openai library):
-import os
-import openai
+Code example (Python, PyTorch):  
 
-# Load your API key from an environment variable for safety
-openai.api_key = os.getenv("OPENAI_API_KEY")
+import torch  
+import torch.nn as nn  
+import torchvision.transforms as transforms  
+import torchvision.models as models  
+from PIL import Image  
 
-def extract_dates(text):
-    """
-    Use a few‑shot prompt to ask the model to list all dates found in the input text.
-    """
-    # Define the system message that sets the overall behavior
-    system_msg = {
-        "role": "system",
-        "content": "You are a helpful assistant that extracts dates from a sentence and returns them as a JSON array."
-    }
+# Helper to load and preprocess images  
+def load_image(path, max_size=512):  
+    image = Image.open(path).convert('RGB')  
+    size = max(image.size)  
+    if size > max_size:  
+        scale = max_size / size  
+        new_size = (int(image.size[0] * scale), int(image.size[1] * scale))  
+        image = image.resize(new_size, Image.ANTIALIAS)  
+    loader = transforms.Compose([transforms.ToTensor()])  
+    tensor = loader(image).unsqueeze(0)  # add batch dimension  
+    return tensor.to(device)  
 
-    # Provide two illustrative examples (few‑shot)
-    example_user_1 = {
-        "role": "user",
-        "content": "The conference will be held on March 12, 2025 and the deadline is 01/15/2025."
-    }
-    example_assistant_1 = {
-        "role": "assistant",
-        "content": '["2025-03-12", "2025-01-15"]'
-    }
-    example_user_2 = {
-        "role": "user",
-        "content": "Our launch dates are 7th July 2023, 08/08/2023, and next year."
-    }
-    example_assistant_2 = {
-        "role": "assistant",
-        "content": '["2023-07-07", "2023-08-08"]'
-    }
+# Compute Gram matrix for a feature map  
+def gram_matrix(tensor):  
+    b, c, h, w = tensor.size()  
+    features = tensor.view(b * c, h * w)  
+    G = torch.mm(features, features.t())  
+    return G.div(b * c * h * w)  
 
-    # The actual user query we want to process
-    query_msg = {
-        "role": "user",
-        "content": f"Extract all dates from the following text:\n{text}"
-    }
+# Define a model that returns selected layer activations  
+class VGGFeatures(nn.Module):  
+    def __init__(self, layers):  
+        super(VGGFeatures, self).__init__()  
+        self.vgg = models.vgg19(pretrained=True).features.eval()  
+        self.layers = layers  
+        for param in self.vgg.parameters():  
+            param.requires_grad = False  
 
-    # Assemble the message list in order
-    messages = [
-        system_msg,
-        example_user_1,
-        example_assistant_1,
-        example_user_2,
-        example_assistant_2,
-        query_msg
-    ]
+    def forward(self, x):  
+        outputs = []  
+        for name, layer in self.vgg._modules.items():  
+            x = layer(x)  
+            if name in self.layers:  
+                outputs.append(x)  
+        return outputs  
 
-    # Call the ChatCompletion endpoint
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",      # lightweight model suitable for this task
-        messages=messages,
-        temperature=0.0,          # deterministic output for extraction
-        max_tokens=100
-    )
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  
 
-    # The model's answer is in the first choice's message content
-    return response.choices[0].message.content.strip()
+content_img = load_image('content.jpg').to(device)  
+style_img   = load_image('style.jpg').to(device)  
 
-# Example usage
-sample_text = "Our meetings are scheduled for 12/01/2024, 15th Feb 2025, and sometime in 2026."
-extracted = extract_dates(sample_text)
-print("Extracted dates:", extracted)
+# Choose layers for content and style representations  
+content_layers = ['21']          # conv4_2 in VGG19  
+style_layers   = ['0', '5', '10', '19', '28']  # conv1_1, conv2_1, conv3_1, conv4_1, conv5_1  
+
+vgg = VGGFeatures(content_layers + style_layers).to(device)  
+
+# Extract target features  
+with torch.no_grad():  
+    content_target = vgg(content_img)[0]  
+    style_targets  = [gram_matrix(f) for f in vgg(style_img)[len(content_layers):]]  
+
+# Initialize generated image as a copy of the content image (requires gradient)  
+generated = content_img.clone().requires_grad_(True)  
+
+optimizer = torch.optim.Adam([generated], lr=0.02)  
+content_weight = 1e5  
+style_weight   = 1e10  
+num_steps = 300  
+
+for step in range(num_steps):  
+    optimizer.zero_grad()  
+    feats = vgg(generated)  
+    gen_content = feats[0]  
+    gen_style_feats = feats[len(content_layers):]  
+
+    # Content loss (MSE)  
+    content_loss = nn.functional.mse_loss(gen_content, content_target)  
+
+    # Style loss (MSE of Gram matrices)  
+    style_loss = 0  
+    for gen_feat, style_gram in zip(gen_style_feats, style_targets):  
+        gen_gram = gram_matrix(gen_feat)  
+        style_loss += nn.functional.mse_loss(gen_gram, style_gram)  
+
+    total_loss = content_weight * content_loss + style_weight * style_loss  
+    total_loss.backward()  
+    optimizer.step()  
+
+    # Clamp pixel values to valid range  
+    with torch.no_grad():  
+        generated.clamp_(0, 1)  
+
+    if (step + 1) % 50 == 0:  
+        print(f'Step {step+1}/{num_steps}, Loss: {total_loss.item():.4f}')  
+
+# Save result  
+output = generated.cpu().squeeze(0)  
+output = transforms.ToPILImage()(output)  
+output.save('output.jpg')  
 */
 
