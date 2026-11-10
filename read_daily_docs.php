@@ -1,283 +1,255 @@
 <?php
-// 2026-11-09 08:37:34
+// 2026-11-10 08:47:32
 
 /* PHP
-PHP PDO (PHP Data Objects) for Secure Database Access
-The PDO extension provides a consistent interface for accessing different databases (MySQL, PostgreSQL, SQLite, etc.) using the same functions.
-It supports prepared statements, which protect against SQL injection by separating query structure from data.
-PDO allows you to fetch results as associative arrays, objects, or both, giving flexibility in handling result sets.
-Error handling can be set to throw exceptions, making debugging and error management more straightforward.
-Using PDO encourages clean, reusable code and makes it easier to switch database drivers without rewriting queries.
+PHP Topic: Generators (Yield)
 
+Explanation:  
+Generators provide a simple way to create iterators without building a full class that implements the Iterator interface.  
+When a function contains the `yield` keyword, PHP returns a Generator object that produces values one at a time.  
+This approach reduces memory usage because values are generated on‑the‑fly rather than stored in an array.  
+Generators can receive input via `send()` and can return a final value with `return`.  
+They are especially useful for processing large data sets, reading files line by line, or streaming results from a database.
+
+Code Example (with comments):
 <?php
-// Database connection parameters
-$host = 'localhost';
-$db   = 'example_db';
-$user = 'db_user';
-$pass = 'db_password';
-$charset = 'utf8mb4';
-
-// Data Source Name (DSN) tells PDO which driver and database to use
-$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
-
-// PDO options improve error handling and performance
-$options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // Return rows as associative arrays
-    PDO::ATTR_EMULATE_PREPARES   => false,                  // Use native prepared statements
-];
-
-try {
-    // Create a new PDO instance (establishes the connection)
-    $pdo = new PDO($dsn, $user, $pass, $options);
-} catch (PDOException $e) {
-    // Handle connection errors gracefully
-    die('Connection failed: ' . $e->getMessage());
+// A generator function that yields numbers from 1 to $max
+function rangeGenerator(int $max): Generator
+{
+    for ($i = 1; $i <= $max; $i++) {
+        // Yield the current number and pause execution
+        yield $i;
+    }
 }
 
-// Example of a prepared SELECT statement
-$sql = 'SELECT id, name, email FROM users WHERE status = :status';
-$stmt = $pdo->prepare($sql);               // Prepare the query template
-$stmt->execute(['status' => 'active']);    // Bind value and execute
+// Using the generator
+$gen = rangeGenerator(5); // Creates a Generator object
 
-// Fetch all matching rows
-$users = $stmt->fetchAll();
-
-foreach ($users as $user) {
-    // Output each user's information
-    echo "ID: {$user['id']}, Name: {$user['name']}, Email: {$user['email']}\n";
+foreach ($gen as $number) {
+    // Each iteration resumes the function where it left off
+    echo "Number: $number\n";
 }
+
+// Example of sending a value back into the generator
+function counter(): Generator
+{
+    $count = 0;
+    while (true) {
+        // Yield the current count and wait for a value to be sent
+        $increment = yield $count;
+        // If a value is sent, add it; otherwise increment by 1
+        $count += $increment ?? 1;
+    }
+}
+
+$counter = counter();
+echo $counter->current() . "\n"; // Outputs 0
+$counter->next();                // Advances to next yield
+echo $counter->current() . "\n"; // Outputs 1
+$counter->send(5);               // Adds 5 to the count
+echo $counter->current() . "\n"; // Outputs 6
 ?>
 */
 
 /* Laravel
-Laravel Topic: Queues and Background Jobs  
+Topic: Laravel Service Container and Dependency Injection  
 
 Explanation:  
-Laravel queues allow time‑consuming tasks such as sending emails, processing uploads, or generating reports to be performed asynchronously, keeping the HTTP response fast.  
-A job class encapsulates the logic that should run in the background, while a queue worker processes pending jobs from the chosen driver (database, Redis, SQS, etc.).  
-Jobs can be dispatched immediately, delayed, or chained together for complex workflows.  
-Laravel provides helper methods to retry failed jobs, monitor queue health, and handle failures gracefully.  
-Using queues also helps scale applications horizontally by adding more workers without changing the core code.  
+The Laravel service container is a powerful tool that manages class dependencies and performs automatic resolution of objects. By binding interfaces to concrete implementations, you can swap out classes without changing the consuming code. Dependency injection allows you to type‑hint required services directly in controller constructors or method signatures, letting the container inject the appropriate instance. This promotes loose coupling, easier testing, and cleaner code organization. Understanding how to register bindings and resolve them is essential for building maintainable Laravel applications.  
 
-Code Example (Job class and dispatch):  
+Code example (app/Providers/AppServiceProvider.php):  
+public function register()  
+{  
+    // Bind an interface to a concrete class so the container knows what to inject  
+    $this->app->bind(  
+        App\Contracts\PaymentGateway::class,  
+        App\Services\StripePaymentGateway::class  
+    );  
+}  
 
-<?php
-namespace App\Jobs;
+Usage in a controller (app/Http/Controllers/OrderController.php):  
+namespace App\Http\Controllers;  
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use App\Mail\WelcomeMail;
-use Illuminate\Support\Facades\Mail;
+use App\Contracts\PaymentGateway;  
+use Illuminate\Http\Request;  
 
-class SendWelcomeEmail implements ShouldQueue
-{
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+class OrderController extends Controller  
+{  
+    protected $paymentGateway;  
 
-    protected $user; // The user instance to receive the email
+    // The container automatically injects the bound implementation  
+    public function __construct(PaymentGateway $paymentGateway)  
+    {  
+        $this->paymentGateway = $paymentGateway;  
+    }  
 
-    // Job receives data via constructor
-    public function __construct($user)
-    {
-        $this->user = $user;
-    }
+    public function store(Request $request)  
+    {  
+        // Use the injected service to process a payment  
+        $this->paymentGateway->charge($request->user(), $request->amount);  
 
-    // This method is called by the queue worker
-    public function handle()
-    {
-        // Send the welcome email using a Mailable class
-        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
-    }
+        // Continue with order creation logic...  
+        return response()->json(['status' => 'order placed']);  
+    }  
+}  
 
-    // Optional: Define how many times the job may be retried
-    public function retryUntil()
-    {
-        return now()->addMinutes(5);
-    }
-}
+Interface definition (app/Contracts/PaymentGateway.php):  
+namespace App\Contracts;  
 
-// Dispatching the job from a controller or any other place
-use App\Jobs\SendWelcomeEmail;
+interface PaymentGateway  
+{  
+    public function charge($user, $amount);  
+}  
 
-public function register(Request $request)
-{
-    // Validate and create the user...
-    $user = User::create($request->all());
+Concrete implementation (app/Services/StripePaymentGateway.php):  
+namespace App\Services;  
 
-    // Dispatch the email job to the default queue
-    SendWelcomeEmail::dispatch($user);
+use App\Contracts\PaymentGateway;  
+use Stripe\StripeClient;  
 
-    // Or dispatch with a delay of 2 minutes
-    // SendWelcomeEmail::dispatch($user)->delay(now()->addMinutes(2));
+class StripePaymentGateway implements PaymentGateway  
+{  
+    protected $stripe;  
 
-    return response()->json(['message' => 'User registered, welcome email queued.']);
-}
-?>
+    public function __construct()  
+    {  
+        // Initialize the Stripe client with secret key  
+        $this->stripe = new StripeClient(config('services.stripe.secret'));  
+    }  
+
+    public function charge($user, $amount)  
+    {  
+        // Perform the actual charge using Stripe's API  
+        $this->stripe->charges->create([  
+            'amount' => $amount * 100, // amount in cents  
+            'currency' => 'usd',  
+            'customer' => $user->stripe_customer_id,  
+            'description' => 'Order payment',  
+        ]);  
+    }  
+}  
+
+With this setup, swapping to another gateway (e.g., PayPal) only requires creating a new class that implements PaymentGateway and changing the binding in the service provider. The controller code remains unchanged.
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) and Recursive Queries
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It improves query readability by allowing you to define subqueries with a name and refer to them multiple times. CTEs are defined using the WITH clause and can be either non‑recursive or recursive. Recursive CTEs are useful for traversing hierarchical data such as organization charts or folder structures. The recursion stops when the CTE’s anchor query no longer produces rows, preventing infinite loops.
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and improve readability by breaking complex queries into logical parts.  
+Recursive CTEs allow you to query hierarchical or tree‑structured data, such as organizational charts or bill‑of‑materials.  
+Each iteration of a recursive CTE builds upon the result of the previous iteration until a termination condition is met.  
+MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.
 
-Code Example with Comments:  
-WITH RECURSIVE org_chart AS (  
-    -- Anchor member: select the top‑level manager(s)  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
-    FROM employees  
-    WHERE manager_id IS NULL  
-  
-    UNION ALL  
-  
-    -- Recursive member: find employees reporting to the current level  
-    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1 AS level  
-    FROM employees e  
-    INNER JOIN org_chart oc ON e.manager_id = oc.employee_id  
-)  
-SELECT employee_id, manager_id, employee_name, level  
-FROM org_chart  
-ORDER BY level, manager_id;  
+Code example (recursive CTE to list an employee hierarchy):
+-- Define the anchor member: top‑level manager(s) with no supervisor
+WITH RECURSIVE employee_hierarchy AS (
+    SELECT
+        emp_id,
+        emp_name,
+        manager_id,
+        1 AS level
+    FROM employees
+    WHERE manager_id IS NULL
+
+    UNION ALL
+
+    -- Recursive member: join employees to their managers
+    SELECT
+        e.emp_id,
+        e.emp_name,
+        e.manager_id,
+        eh.level + 1 AS level
+    FROM employees e
+    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.emp_id
+)
+SELECT
+    emp_id,
+    emp_name,
+    manager_id,
+    level
+FROM employee_hierarchy
+ORDER BY level, manager_id;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: JavaScript Closures
 
-Explanation:
-A closure is created when an inner function retains access to the variables of its outer (enclosing) function after that outer function has finished executing. This allows the inner function to preserve state between calls without using global variables. Closures are fundamental for data encapsulation, partial application, and implementing private members in objects. They are formed automatically whenever a function is defined inside another function and the inner function references variables from the outer scope. Understanding closures helps avoid common pitfalls such as unintended memory leaks and stale references.
+Explanation:  
+A closure is a function that retains access to its lexical scope even when the outer function has finished executing.  
+It allows the inner function to remember variables from the outer function’s environment.  
+Closures are useful for data encapsulation, creating private variables, and partial application.  
+They are created automatically each time a function is defined inside another function.  
+Understanding closures helps avoid common pitfalls with asynchronous code and loops.
 
-Code example with comments:
-function makeCounter() {
-    // Private variable that will be captured by the inner function
-    var count = 0;
+Code example:
+// outer function creates a private counter variable
+function createCounter(initialValue) {
+    let count = initialValue;               // this variable is private to the closure
 
-    // The inner function forms a closure over 'count'
-    return function() {
-        // Increment the private count each time the returned function is called
-        count++;
+    // inner function forms a closure over 'count'
+    return function increment(step = 1) {
+        count += step;                       // can read and modify 'count'
         console.log('Current count:', count);
+        return count;
     };
 }
 
-// Create a new counter instance
-var counterA = makeCounter();
+// use the closure
+const counterA = createCounter(0);           // start at 0
+counterA();                                  // prints "Current count: 1"
+counterA(5);                                 // prints "Current count: 6"
 
-counterA(); // Current count: 1
-counterA(); // Current count: 2
-
-// Create a second, independent counter
-var counterB = makeCounter();
-
-counterB(); // Current count: 1
-counterA(); // Current count: 3   (counterA maintains its own separate state)
+const counterB = createCounter(10);          // separate closure, starts at 10
+counterB();                                  // prints "Current count: 11"
+counterB(2);                                 // prints "Current count: 13"
 */
 
 /* AI
-Topic: Neural Style Transfer with PyTorch  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-Neural style transfer (NST) blends the artistic style of one image with the content of another by optimizing a generated image to match the high‑level features of the content image and the Gram‑matrix statistics of the style image. The approach uses a pretrained convolutional network (e.g., VGG‑19) to extract feature maps at multiple layers. Content loss measures the difference between the generated and content feature activations, while style loss measures the difference between their Gram matrices. By iteratively updating the generated image with gradient descent, the result gradually adopts the visual texture of the style image while preserving the original scene layout. PyTorch’s autograd makes the optimization loop concise and GPU‑accelerated.
+Few‑shot prompting supplies the model with a small number of example input‑output pairs to guide its behavior on new tasks.  
+By carefully crafting the examples and using clear separators, you can shape the model’s style, format, and domain knowledge.  
+This technique works well for classification, data extraction, and code generation without any model fine‑tuning.  
+You can dynamically build the prompt in code, insert user input, and parse the structured response.  
+Adjust temperature and max_tokens to control creativity and length of the generated answer.  
 
-Code example (Python, PyTorch):  
+Code example (Python, using the openai package):  
 
-import torch  
-import torch.nn as nn  
-import torchvision.transforms as transforms  
-import torchvision.models as models  
-from PIL import Image  
+import os, json, openai  
 
-# Helper to load and preprocess images  
-def load_image(path, max_size=512):  
-    image = Image.open(path).convert('RGB')  
-    size = max(image.size)  
-    if size > max_size:  
-        scale = max_size / size  
-        new_size = (int(image.size[0] * scale), int(image.size[1] * scale))  
-        image = image.resize(new_size, Image.ANTIALIAS)  
-    loader = transforms.Compose([transforms.ToTensor()])  
-    tensor = loader(image).unsqueeze(0)  # add batch dimension  
-    return tensor.to(device)  
+# Load your OpenAI API key from environment variable  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Compute Gram matrix for a feature map  
-def gram_matrix(tensor):  
-    b, c, h, w = tensor.size()  
-    features = tensor.view(b * c, h * w)  
-    G = torch.mm(features, features.t())  
-    return G.div(b * c * h * w)  
+# Define a few‑shot prompt with two examples for extracting product price from a description  
+examples = [  
+    {"role": "user", "content": "Product: Wireless Mouse\nDescription: A smooth, ergonomic mouse with 2.4 GHz connectivity.\nPrice: $25.99"},  
+    {"role": "assistant", "content": "{\"price\": \"25.99\"}"},  
+    {"role": "user", "content": "Product: Bluetooth Speaker\nDescription: Portable speaker with 10 h battery life.\nPrice: $45.00"},  
+    {"role": "assistant", "content": "{\"price\": \"45.00\"}"},  
+]  
 
-# Define a model that returns selected layer activations  
-class VGGFeatures(nn.Module):  
-    def __init__(self, layers):  
-        super(VGGFeatures, self).__init__()  
-        self.vgg = models.vgg19(pretrained=True).features.eval()  
-        self.layers = layers  
-        for param in self.vgg.parameters():  
-            param.requires_grad = False  
+def extract_price(product_description: str) -> dict:  
+    # Build the conversation: few‑shot examples + new query  
+    messages = examples + [{"role": "user", "content": product_description}]  
 
-    def forward(self, x):  
-        outputs = []  
-        for name, layer in self.vgg._modules.items():  
-            x = layer(x)  
-            if name in self.layers:  
-                outputs.append(x)  
-        return outputs  
+    # Call the Chat Completion endpoint  
+    response = openai.ChatCompletion.create(  
+        model="gpt-4o-mini",          # lightweight model suitable for prompting tasks  
+        messages=messages,  
+        temperature=0.0,              # deterministic output for extraction  
+        max_tokens=50,                # enough to return a short JSON object  
+        response_format={"type": "json_object"}  # ask model to output valid JSON  
+    )  
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  
+    # Parse the JSON string returned by the model  
+    result = json.loads(response.choices[0].message.content)  
+    return result  
 
-content_img = load_image('content.jpg').to(device)  
-style_img   = load_image('style.jpg').to(device)  
-
-# Choose layers for content and style representations  
-content_layers = ['21']          # conv4_2 in VGG19  
-style_layers   = ['0', '5', '10', '19', '28']  # conv1_1, conv2_1, conv3_1, conv4_1, conv5_1  
-
-vgg = VGGFeatures(content_layers + style_layers).to(device)  
-
-# Extract target features  
-with torch.no_grad():  
-    content_target = vgg(content_img)[0]  
-    style_targets  = [gram_matrix(f) for f in vgg(style_img)[len(content_layers):]]  
-
-# Initialize generated image as a copy of the content image (requires gradient)  
-generated = content_img.clone().requires_grad_(True)  
-
-optimizer = torch.optim.Adam([generated], lr=0.02)  
-content_weight = 1e5  
-style_weight   = 1e10  
-num_steps = 300  
-
-for step in range(num_steps):  
-    optimizer.zero_grad()  
-    feats = vgg(generated)  
-    gen_content = feats[0]  
-    gen_style_feats = feats[len(content_layers):]  
-
-    # Content loss (MSE)  
-    content_loss = nn.functional.mse_loss(gen_content, content_target)  
-
-    # Style loss (MSE of Gram matrices)  
-    style_loss = 0  
-    for gen_feat, style_gram in zip(gen_style_feats, style_targets):  
-        gen_gram = gram_matrix(gen_feat)  
-        style_loss += nn.functional.mse_loss(gen_gram, style_gram)  
-
-    total_loss = content_weight * content_loss + style_weight * style_loss  
-    total_loss.backward()  
-    optimizer.step()  
-
-    # Clamp pixel values to valid range  
-    with torch.no_grad():  
-        generated.clamp_(0, 1)  
-
-    if (step + 1) % 50 == 0:  
-        print(f'Step {step+1}/{num_steps}, Loss: {total_loss.item():.4f}')  
-
-# Save result  
-output = generated.cpu().squeeze(0)  
-output = transforms.ToPILImage()(output)  
-output.save('output.jpg')  
+# Example usage  
+query = "Product: Smart Thermostat\nDescription: Wi‑Fi enabled thermostat with voice control.\nPrice: $199.99"  
+print(extract_price(query))   # Expected output: {'price': '199.99'}
 */
 
