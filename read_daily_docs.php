@@ -1,215 +1,203 @@
 <?php
-// 2026-11-20 08:54:27
+// 2026-11-21 08:36:24
 
 /* PHP
-Topic: PHP Traits – Reusing Method Implementations Across Classes  
+Topic: PHP Namespaces
 
 Explanation:  
-- Traits allow you to define reusable sets of methods that can be inserted into multiple classes without using inheritance.  
-- They help avoid code duplication when different classes share similar behavior but belong to unrelated hierarchies.  
-- A trait can contain methods, properties, and even abstract method declarations that the using class must implement.  
-- You can use the `use` keyword inside a class to import a trait, and you can resolve method name conflicts with `insteadof` and `as` operators.  
-- Traits are especially useful for adding cross‑cutting concerns like logging, caching, or validation to diverse objects.
+Namespaces in PHP allow you to group related classes, interfaces, functions, and constants under a single name, preventing naming collisions in large projects.  
+They are defined using the `namespace` keyword at the top of a PHP file.  
+When using namespaced code, you can either reference the full qualified name or import it with the `use` statement.  
+Namespaces can be nested, creating a hierarchy similar to directory structures.  
+They improve code organization, especially when integrating third‑party libraries or following PSR‑4 autoloading standards.  
 
-Code example with comments:
+Code example:  
+<?php  
+// Define a namespace for utility classes  
+namespace MyApp\Utils;  
 
-<?php
-// Define a trait that provides logging capability
-trait LoggerTrait {
-    // Simple method to log a message with timestamp
-    public function log(string $message): void {
-        $time = date('Y-m-d H:i:s');
-        echo "[{$time}] {$message}\n";
-    }
-}
+class StringHelper {  
+    // Convert a string to title case (first letter of each word uppercase)  
+    public static function toTitleCase(string $text): string {  
+        return ucwords(strtolower($text));  
+    }  
+}  
 
-// First class that needs logging
-class OrderProcessor {
-    use LoggerTrait;   // Import the logging methods
+// In another script, import and use the namespaced class  
+use MyApp\Utils\StringHelper;  
 
-    public function process(int $orderId): void {
-        $this->log("Processing order #{$orderId}");
-        // ... order processing logic ...
-        $this->log("Order #{$orderId} processed successfully");
-    }
-}
-
-// Second class that also needs logging but adds its own method
-class UserManager {
-    use LoggerTrait;   // Reuse the same logging trait
-
-    public function createUser(string $username): void {
-        $this->log("Creating user '{$username}'");
-        // ... user creation logic ...
-        $this->log("User '{$username}' created");
-    }
-}
-
-// Demonstration
-$processor = new OrderProcessor();
-$processor->process(101);
-
-$userMgr = new UserManager();
-$userMgr->createUser('alice');
+echo StringHelper::toTitleCase('hello world from php'); // Outputs: Hello World From Php  
 ?>
 */
 
 /* Laravel
-Laravel Service Container & Dependency Injection  
+Topic: Laravel Queues and Jobs
 
-The service container is the powerful backbone that manages class dependencies and performs dependency injection automatically.  
-When a class type‑hints another class or interface in its constructor, the container resolves and provides the needed instance.  
-Bindings tell the container which concrete class should be used for a given abstraction, allowing easy swapping of implementations.  
-Service providers are the place where you register these bindings, keeping your application’s bootstrapping organized.  
-Controllers, jobs, listeners, or any class resolved by the container can receive dependencies without manually instantiating them.
+Explanation:  
+Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or interacting with external APIs to a background process. By pushing jobs onto a queue, the main request can finish quickly, improving response time for users. Laravel provides a unified API for several queue drivers (database, Redis, SQS, etc.) and automatically retries failed jobs. Jobs are simple PHP classes that implement the handle method where the task logic resides. You can dispatch a job synchronously, to a specific queue, or with a delay, and Laravel’s worker processes will execute them in the background.
+
+Code Example (Job class and dispatching):
 
 <?php
-// app/Services/PaymentGateway.php
-namespace App\Services;
 
-interface PaymentGateway {
-    public function charge($amount);
-}
+namespace App\Jobs;
 
-// app/Services/StripeGateway.php
-namespace App\Services;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Mail;
 
-class StripeGateway implements PaymentGateway {
-    public function charge($amount) {
-        // Simulate a charge via Stripe API
-        return "Charged \${$amount} using Stripe.";
+class SendWelcomeEmail implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    protected $user; // The user instance that will receive the email
+
+    // Constructor receives data needed for the job
+    public function __construct($user)
+    {
+        $this->user = $user;
+    }
+
+    // This method is called by the queue worker
+    public function handle()
+    {
+        // Build and send the welcome email
+        Mail::to($this->user->email)->send(new \App\Mail\WelcomeMail($this->user));
     }
 }
 
-// app/Providers/AppServiceProvider.php
-namespace App\Providers;
+// Dispatching the job from a controller or any other place
+use App\Jobs\SendWelcomeEmail;
 
-use Illuminate\Support\ServiceProvider;
-use App\Services\PaymentGateway;
-use App\Services\StripeGateway;
+// Assuming $newUser is the freshly created user model
+SendWelcomeEmail::dispatch($newUser)          // Pushes the job onto the default queue
+                 ->onQueue('emails')         // Optionally specify a named queue
+                 ->delay(now()->addMinutes(5)); // Optional delay before execution
 
-class AppServiceProvider extends ServiceProvider {
-    public function register() {
-        // Bind the interface to the concrete implementation
-        $this->app->bind(PaymentGateway::class, StripeGateway::class);
-    }
-}
+// To start processing jobs, run the worker in a terminal:
+// php artisan queue:work --queue=emails
 
-// app/Http/Controllers/OrderController.php
-namespace App\Http\Controllers;
-
-use Illuminate\Http\Request;
-use App\Services\PaymentGateway;
-
-class OrderController extends Controller {
-    protected $gateway;
-
-    // The container injects the concrete StripeGateway automatically
-    public function __construct(PaymentGateway $gateway) {
-        $this->gateway = $gateway;
-    }
-
-    public function store(Request $request) {
-        $amount = $request->input('total');
-        $result = $this->gateway->charge($amount);
-        // Additional order processing can go here
-        return response($result);
-    }
-}
 ?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) in MySQL  
+Topic: MySQL Stored Procedures with Input and Output Parameters  
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs improve readability by allowing you to break complex queries into logical building blocks.  
-MySQL supports recursive CTEs, which are useful for hierarchical data such as organizational charts or category trees.  
-You define a CTE using the WITH clause, and it exists only for the duration of the surrounding statement.  
-Multiple CTEs can be chained together by separating them with commas in the WITH clause.  
+Stored procedures are pre‑compiled SQL code that can be executed repeatedly with different arguments, improving performance and security. They allow you to encapsulate complex logic, use variables, control‑flow statements, and handle transactions in a single unit. Input parameters let callers supply values, while output parameters return results without using result sets. Using procedures reduces network round‑trips because multiple statements run on the server side. Proper error handling inside a procedure helps maintain data integrity.
 
-Code Example:  
-WITH RECURSIVE employee_hierarchy AS (  
-    -- Anchor member: start with the top‑level manager (e.g., id = 1)  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
-    FROM employees  
-    WHERE manager_id IS NULL AND employee_id = 1  
+Code Example:
+DELIMITER $$
 
-    UNION ALL  
+CREATE PROCEDURE GetCustomerStats (
+    IN  p_country VARCHAR(50),          -- input: filter by country
+    OUT p_totalCustomers INT,          -- output: total number of customers
+    OUT p_avgOrderValue DECIMAL(10,2)  -- output: average order value
+)
+BEGIN
+    -- Count customers in the specified country
+    SELECT COUNT(*) INTO p_totalCustomers
+    FROM customers
+    WHERE country = p_country;
 
-    -- Recursive member: find direct reports of the previous level  
-    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1  
-    FROM employees e  
-    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id  
-)  
-SELECT employee_id, manager_id, employee_name, level  
-FROM employee_hierarchy  
-ORDER BY level, manager_id;   (This query returns the full reporting hierarchy starting from the top manager.)
+    -- Calculate average order value for those customers
+    SELECT IFNULL(AVG(o.total_amount),0) INTO p_avgOrderValue
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.id
+    WHERE c.country = p_country;
+END$$
+DELIMITER ;
+
+-- Call the procedure and retrieve output values
+CALL GetCustomerStats('USA', @total, @avg);
+SELECT @total AS total_customers, @avg AS average_order_value;
 */
 
 /* JavaScript
 Topic: Closures in JavaScript  
 
 Explanation:  
-A closure is a function that retains access to its lexical environment even after the outer function has finished executing.  
-It allows the inner function to read and modify variables that were declared in the outer function’s scope.  
-Closures are created automatically each time a function is defined, capturing the surrounding variables at that moment.  
-They are useful for data encapsulation, creating private state, and implementing functional patterns such as partial application.  
-Be mindful that excessive closures can hold onto memory longer than necessary if references are not released.  
+A closure is created when an inner function retains access to variables from its outer (enclosing) function after that outer function has finished executing. This allows the inner function to remember the lexical environment in which it was defined, enabling data encapsulation and private state. Closures are fundamental for patterns like module design, callbacks, and partial application. They work because JavaScript functions form a scope chain that preserves references to outer variables. Understanding closures helps avoid common pitfalls such as unintended shared state in loops.
 
-Code example:  
+Code example with comments:  
+
 function makeCounter() {  
-    let count = 0; // variable captured by the closure, not accessible from outside  
-    return function() {  
-        count++;               // modifies the captured variable  
-        console.log(count);   // displays the current count  
-    };  
+    let count = 0;                     // count is local to makeCounter  
+    return function() {                // the inner function forms a closure  
+        count += 1;                     // it can modify count each call  
+        return count;                   // expose the updated value  
+    };                                 // the returned function keeps a reference to count  
 }  
-const counter = makeCounter(); // makeCounter returns a closure that remembers 'count'  
-counter(); // prints 1  
-counter(); // prints 2  
-// Even though makeCounter has completed, the inner function still has access to the private 'count' variable.
+
+const counterA = makeCounter(); // each call to makeCounter gets its own closure  
+const counterB = makeCounter();  
+
+console.log(counterA()); // 1  
+console.log(counterA()); // 2  
+console.log(counterB()); // 1 (independent closure)  
+console.log(counterA()); // 3   (counterA’s private state continues)  
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Fine‑tuning a Small Transformer for Text Classification with Hugging Face Transformers  
 
 Explanation:  
-Few‑shot prompting gives the model a small number of example interactions so it can infer the desired pattern without fine‑tuning. By placing a few user‑assistant turns at the start of the message list, you can guide the model to produce consistent, domain‑specific outputs. This technique works well for tasks like text classification, data extraction, or generating code snippets. It is lightweight, requires only API calls, and can be iterated quickly. Adjust the examples to reflect edge cases you expect the model to handle.  
+1. Fine‑tuning adapts a pre‑trained language model to a specific downstream task by training on a labeled dataset.  
+2. Using a compact model such as “distilbert‑base‑uncased” keeps training fast and resource‑light while retaining strong performance.  
+3. The Hugging Face 🤗 Transformers library provides high‑level Trainer utilities that handle tokenization, batching, and evaluation automatically.  
+4. A typical workflow includes loading the dataset, preprocessing text into token IDs, defining a classification head, and launching training.  
+5. After fine‑tuning, the model can be exported and served via the Hugging Face Inference API or integrated directly into applications.  
 
-Code example (Python, using the openai library):  
+Code example (Python) with comments:  
 
-import os  
-import openai  
+import torch                                 # Core PyTorch library  
+from datasets import load_dataset           # Utility to fetch standard datasets  
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments  
 
-# Load your OpenAI API key from an environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Load a small sentiment dataset (e.g., IMDb)  
+raw_dataset = load_dataset("imdb", split="train[:5%]")   # Use a tiny subset for demo  
 
-# Define a few‑shot prompt: two examples of the desired behavior  
-few_shot_messages = [  
-    {"role": "system", "content": "You are a helpful assistant that extracts the city name from a travel sentence."},  
-    {"role": "user", "content": "I will be flying to Paris next month."},  
-    {"role": "assistant", "content": "Paris"},  
-    {"role": "user", "content": "Our vacation plan includes a week in Kyoto."},  
-    {"role": "assistant", "content": "Kyoto"}  
-]  
+# Initialize tokenizer for the chosen model  
+tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")  
 
-# New user query that follows the same pattern  
-new_query = {"role": "user", "content": "Looking forward to exploring the beaches of Barcelona."}  
+# Tokenization function that converts raw text to model inputs  
+def tokenize(batch):  
+    return tokenizer(batch["text"], padding="max_length", truncation=True, max_length=128)  
 
-# Combine the examples with the new query  
-messages = few_shot_messages + [new_query]  
+# Apply tokenization to the entire dataset  
+tokenized_dataset = raw_dataset.map(tokenize, batched=True)  
 
-# Call the Chat Completion API  
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",        # lightweight model for fast inference  
-    messages=messages,  
-    temperature=0.0,            # deterministic output for extraction tasks  
-    max_tokens=10               # limit response length to the city name  
+# Rename the label column to “labels” as expected by the Trainer API  
+tokenized_dataset = tokenized_dataset.rename_column("label", "labels")  
+tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])  
+
+# Load pre‑trained model with a classification head (2 classes for sentiment)  
+model = AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=2)  
+
+# Define training hyper‑parameters  
+training_args = TrainingArguments(  
+    output_dir="./results",            # Where to store checkpoints  
+    num_train_epochs=2,                # Few epochs for quick demo  
+    per_device_train_batch_size=8,  
+    learning_rate=5e-5,  
+    logging_steps=10,  
+    evaluation_strategy="no",          # Skip evaluation to keep example short  
 )  
 
-# Print the extracted city name  
-print(response.choices[0].message.content.strip())   # Expected output: Barcelona
+# Create Trainer object that ties together model, data, and args  
+trainer = Trainer(  
+    model=model,  
+    args=training_args,  
+    train_dataset=tokenized_dataset,  
+)  
+
+# Start fine‑tuning  
+trainer.train()  
+
+# Save the fine‑tuned model for later inference  
+trainer.save_model("./fine_tuned_distilbert")   # Directory now contains model + tokenizer  
 */
 
