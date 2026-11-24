@@ -1,231 +1,296 @@
 <?php
-// 2026-11-23 09:30:40
+// 2026-11-24 11:27:11
 
 /* PHP
-Topic: PHP Generators (Yield)
+PHP PDO (PHP Data Objects) for Secure Database Access  
+The PDO extension provides a consistent interface for working with many different databases (MySQL, PostgreSQL, SQLite, etc.).  
+It uses prepared statements, which separate SQL code from data, preventing SQL‑injection attacks.  
+PDO returns results as objects or associative arrays, making it easy to manipulate query data.  
+Error handling can be configured to throw exceptions, allowing clean try/catch logic.  
+Connection parameters are supplied as a DSN string, keeping credentials separate from the query logic.  
 
-Explanation:
-- Generators provide a simple way to implement iterators without the overhead of building a full class that implements Iterator.
-- By using the `yield` keyword, a function can return values one at a time, maintaining its state between calls.
-- This is especially useful for processing large data sets or streams where loading everything into memory would be inefficient.
-- Generators produce a Traversable object that can be used in foreach loops just like arrays.
-- They also allow you to send data back into the generator with the `send()` method, enabling two‑way communication.
-
-Code example (with comments):
 <?php
-function readLines(string $filename): Generator
-{
-    // Open the file for reading
-    $handle = fopen($filename, 'r');
-    if ($handle === false) {
-        throw new RuntimeException("Cannot open file: $filename");
-    }
+// Database connection parameters
+$host = 'localhost';
+$db   = 'testdb';
+$user = 'dbuser';
+$pass = 'dbpass';
+$charset = 'utf8mb4';
 
-    // Yield each line without loading the whole file into memory
-    while (($line = fgets($handle)) !== false) {
-        // Trim the newline character and yield the line
-        yield trim($line);
-    }
+// Data Source Name (DSN) string tells PDO which driver to use and how to connect
+$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
 
-    // Close the file when the generator is exhausted
-    fclose($handle);
+$options = [
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // Fetch results as associative arrays
+    PDO::ATTR_EMULATE_PREPARES   => false,                  // Use native prepared statements
+];
+
+try {
+    // Create a new PDO instance (establishes the connection)
+    $pdo = new PDO($dsn, $user, $pass, $options);
+} catch (PDOException $e) {
+    // Handle connection errors
+    die('Connection failed: ' . $e->getMessage());
 }
 
-// Usage example:
-foreach (readLines('large_file.txt') as $lineNumber => $line) {
-    // Process each line (e.g., print with line number)
-    echo ($lineNumber + 1) . ": " . $line . PHP_EOL;
+// Example prepared statement to fetch a user by email
+$sql = 'SELECT id, name, email FROM users WHERE email = :email';
+$stmt = $pdo->prepare($sql);            // Prepare the query with a named placeholder
+$stmt->execute(['email' => 'alice@example.com']); // Bind the value and execute
+
+// Fetch the single result row
+$user = $stmt->fetch();
+
+if ($user) {
+    echo "User ID: {$user['id']}, Name: {$user['name']}, Email: {$user['email']}";
+} else {
+    echo 'No user found with that email.';
 }
 ?>
 */
 
 /* Laravel
-Topic: Form Request Validation
+Topic: Eloquent One-to-Many Relationships
 
 Explanation:  
-Form Request classes encapsulate validation logic, keeping controllers clean and reusable.  
-They are generated via Artisan and automatically injected into controller methods.  
-You define rules and custom messages inside the request, and Laravel runs validation before the controller executes.  
-If validation fails, a JSON response or redirect with errors is returned automatically.  
-This approach promotes single‑responsibility principle and makes testing validation rules straightforward.
+In Laravel, a one-to-many relationship links a parent model that can have multiple related child records, while each child belongs to a single parent. This is common for scenarios like a blog where a Post can have many Comments. The relationship is defined using the hasMany method on the parent model and the belongsTo method on the child model. Laravel automatically infers foreign key names (e.g., post_id) but they can be customized. Once defined, you can retrieve related records using dynamic properties or query builder methods, and you can also create, update, or delete related models through the relationship.
 
-Code example:
+Code example with comments:
 
+// app/Models/Post.php
 <?php
-namespace App\Http\Requests;
+namespace App\Models;
 
-use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Database\Eloquent\Model;
 
-class StorePostRequest extends FormRequest
+class Post extends Model
 {
-    // Determine if the user is authorized to make this request.
-    public function authorize()
+    // Define the one-to-many relationship to comments
+    public function comments()
     {
-        // Typically return true or implement permission checks.
-        return true;
-    }
-
-    // Define validation rules.
-    public function rules()
-    {
-        return [
-            'title'   => 'required|string|max:255',
-            'content' => 'required|string',
-            'tags'    => 'array',
-            'tags.*'  => 'integer|exists:tags,id',
-        ];
-    }
-
-    // Optional: custom error messages.
-    public function messages()
-    {
-        return [
-            'title.required' => 'A title is required for the post.',
-            'content.required' => 'Please provide the post content.',
-        ];
+        // hasMany(RelatedModel::class, foreignKey = 'post_id', localKey = 'id')
+        return $this->hasMany(Comment::class);
     }
 }
 
-// In a controller
-namespace App\Http\Controllers;
+// app/Models/Comment.php
+<?php
+namespace App\Models;
 
-use App\Http\Requests\StorePostRequest;
+use Illuminate\Database\Eloquent\Model;
+
+class Comment extends Model
+{
+    // Define the inverse relationship back to the post
+    public function post()
+    {
+        // belongsTo(RelatedModel::class, foreignKey = 'post_id', ownerKey = 'id')
+        return $this->belongsTo(Post::class);
+    }
+}
+
+// database/migrations/2024_01_01_000001_create_posts_table.php
+<?php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreatePostsTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('posts', function (Blueprint $table) {
+            $table->id();
+            $table->string('title');
+            $table->text('body');
+            $table->timestamps();
+        });
+    }
+
+    public function down()
+    {
+        Schema::dropIfExists('posts');
+    }
+}
+
+// database/migrations/2024_01_01_000002_create_comments_table.php
+<?php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateCommentsTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('comments', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('post_id')->constrained()->onDelete('cascade');
+            $table->text('content');
+            $table->timestamps();
+        });
+    }
+
+    public function down()
+    {
+        Schema::dropIfExists('comments');
+    }
+}
+
+// Using the relationship in a controller or route
+<?php
 use App\Models\Post;
+use App\Models\Comment;
 
-class PostController extends Controller
-{
-    public function store(StorePostRequest $request)
-    {
-        // Validation has already passed at this point.
-        $validated = $request->validated();
-
-        // Create the post using mass assignment.
-        $post = Post::create($validated);
-
-        // Attach tags if they were provided.
-        if (isset($validated['tags'])) {
-            $post->tags()->attach($validated['tags']);
-        }
-
-        return response()->json(['message' => 'Post created successfully', 'post' => $post], 201);
-    }
+// Retrieve a post with its comments
+$post = Post::with('comments')->find(1);
+foreach ($post->comments as $comment) {
+    echo $comment->content . PHP_EOL;
 }
-?>
+
+// Create a new comment for a post
+$comment = new Comment(['content' => 'Great article!']);
+$post->comments()->save($comment);
+
+// Delete all comments belonging to a post
+$post->comments()->delete();
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) and Recursive Queries
+Topic: Using Stored Procedures with IN, OUT, and INOUT Parameters
 
 Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and improve readability by separating complex subqueries from the main query.  
-Recursive CTEs allow you to query hierarchical or tree‑structured data, such as organization charts or bill‑of‑materials.  
-The recursion works by defining an anchor member (the starting rows) and a recursive member that references the CTE itself.  
-You can control the depth of recursion with the MAXRECURSION option (in MySQL 8.0+ the limit is set by the server variable).  
+Stored procedures allow you to encapsulate a set of SQL statements that can be executed repeatedly with different inputs.  
+By defining IN, OUT, and INOUT parameters, you can pass values into the procedure, retrieve results, and even modify the input values.  
+IN parameters are read‑only inside the procedure, OUT parameters return data to the caller, and INOUT parameters act as both input and output.  
+Procedures improve code reusability, reduce network traffic, and can enforce business logic at the database level.  
+They are especially useful for complex operations that involve multiple queries, transactions, or conditional logic.
 
-Code Example (MySQL 8.0+):
-WITH RECURSIVE employee_hierarchy AS
-(
-    -- Anchor member: select the top‑level manager(s)
-    SELECT 
-        employee_id,
-        manager_id,
-        employee_name,
-        1 AS level
-    FROM employees
-    WHERE manager_id IS NULL
+Code example (MySQL):
 
-    UNION ALL
+-- Create a database and use it
+CREATE DATABASE IF NOT EXISTS demo_db;
+USE demo_db;
 
-    -- Recursive member: join each employee to their manager
-    SELECT 
-        e.employee_id,
-        e.manager_id,
-        e.employee_name,
-        eh.level + 1 AS level
-    FROM employees e
-    INNER JOIN employee_hierarchy eh
-        ON e.manager_id = eh.employee_id
+-- Create a sample table to store employee salaries
+CREATE TABLE IF NOT EXISTS employees (
+    emp_id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL,
+    salary DECIMAL(10,2) NOT NULL
+);
+
+-- Insert some test data
+INSERT INTO employees (name, salary) VALUES 
+('Alice', 70000.00),
+('Bob', 85000.00),
+('Carol', 92000.00);
+
+-- Drop the procedure if it already exists
+DROP PROCEDURE IF EXISTS GetSalaryInfo;
+
+-- Define a stored procedure that takes an employee ID (IN),
+-- returns the employee name (OUT), and updates the salary by a bonus amount (INOUT)
+CREATE PROCEDURE GetSalaryInfo (
+    IN p_emp_id INT,
+    OUT p_name VARCHAR(50),
+    INOUT p_bonus DECIMAL(10,2)
 )
-SELECT 
-    employee_id,
-    manager_id,
-    employee_name,
-    level
-FROM employee_hierarchy
-ORDER BY level, manager_id;
+BEGIN
+    -- Retrieve the employee name into the OUT parameter
+    SELECT name INTO p_name
+    FROM employees
+    WHERE emp_id = p_emp_id;
+
+    -- Add the bonus to the current salary
+    UPDATE employees
+    SET salary = salary + p_bonus
+    WHERE emp_id = p_emp_id;
+
+    -- After the update, fetch the new salary and store it back into the INOUT parameter
+    SELECT salary INTO p_bonus
+    FROM employees
+    WHERE emp_id = p_emp_id;
+END;
+
+-- Declare variables to hold the OUT and INOUT values
+SET @empName = '';
+SET @bonusAmount = 5000.00;   -- initial bonus to add
+
+-- Call the procedure for employee with ID 2 (Bob)
+CALL GetSalaryInfo(2, @empName, @bonusAmount);
+
+-- Display the results
+SELECT @empName AS EmployeeName, @bonusAmount AS NewSalaryAfterBonus;
+
+-- Verify the table reflects the updated salary
+SELECT * FROM employees WHERE emp_id = 2;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: Debouncing Functions in JavaScript  
 
 Explanation:  
-A closure is a function that retains access to its lexical scope even when the outer function has finished executing. It enables data encapsulation, allowing private variables that cannot be accessed directly from outside. Closures are created each time a function is defined, capturing the surrounding variables at that moment. They are essential for patterns such as factories, module pattern, and handling asynchronous callbacks. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state across invocations.
+Debouncing is a technique used to limit how often a function can be invoked. It is especially useful for performance‑critical events like window resizing, scrolling, or keystroke handling where the raw event may fire many times per second. The debounce wrapper creates a timer that delays the execution of the original function until a specified period has elapsed without further calls. If the event occurs again before the timer expires, the timer is reset, effectively postponing the function call. This reduces unnecessary processing and improves UI responsiveness.
 
-Code example:
-// Outer function creates a private counter variable
-function createCounter(initialValue) {
-    let count = initialValue;               // This variable is private to the closure
+Code example with comments:  
 
-    // Inner function forms a closure over 'count'
-    return function(step = 1) {
-        count += step;                      // Modifies the captured variable
-        return count;                       // Returns the updated count
+function debounce(func, wait) {                     // Accept the function to debounce and the delay in ms
+    let timeoutId = null;                         // Holds the reference to the pending timer
+    return function(...args) {                    // Return a new wrapper function that captures arguments
+        if (timeoutId !== null) {                 // If a timer is already running, clear it
+            clearTimeout(timeoutId);
+        }
+        timeoutId = setTimeout(() => {            // Start a new timer
+            func.apply(this, args);               // When the timer finishes, invoke the original function
+        }, wait);
     };
 }
 
-// Create two independent counters
-const counterA = createCounter(0);
-const counterB = createCounter(10);
-
-console.log(counterA()); // 1  (0 + 1)
-console.log(counterA(5)); // 6  (1 + 5)
-console.log(counterB()); // 11 (10 + 1)
-console.log(counterB(2)); // 13 (11 + 2)
+// Example usage: log the window width only after the user stops resizing for 300 ms
+const logWidth = () => console.log('Window width:', window.innerWidth);
+window.addEventListener('resize', debounce(logWidth, 300));   // Attach debounced handler to resize event  
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-1. Few‑shot prompting provides the model with several example input‑output pairs to guide its behavior without changing the underlying model.  
-2. By placing these examples directly in the system or user messages, you can shape the style, format, and constraints of the generated response.  
-3. This technique works well for tasks like data extraction, code generation, or rewriting text where a clear pattern is needed.  
-4. The OpenAI Chat Completion API accepts a list of message objects, making it easy to prepend examples before the actual user query.  
-5. Adjusting the number and quality of examples lets you trade off between prompt length (token cost) and result fidelity.  
+1. Few‑shot prompting supplies a small number of example input‑output pairs to guide the model’s behavior without fine‑tuning.  
+2. By structuring the prompt as a conversation, you can demonstrate the desired format, tone, and constraints.  
+3. The model uses the examples as a pattern, generalizing to new user queries that follow the same schema.  
+4. This technique works well for classification, transformation, or generation tasks where a full dataset is unavailable.  
+5. The OpenAI Chat Completion endpoint accepts a list of messages, making it easy to embed examples directly in the API call.  
 
-Code example (Python, using the openai library):  
+Code example (Python, using openai library):  
 
 import os  
 import openai  
 
-# Set your OpenAI API key – normally from an environment variable for security  
+# Load your API key from an environment variable or secret manager  
 openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define a few‑shot prompt that teaches the model to convert informal sentences to formal ones  
-few_shot_examples = [  
-    {"role": "system", "content": "You are an assistant that rewrites informal English into formal academic style."},  
-    {"role": "user", "content": "Hey, can you tell me why the sky is blue?"},  
-    {"role": "assistant", "content": "Could you please explain the physical reasons behind the blue coloration of the sky?"},  
-    {"role": "user", "content": "I need help fixing my code, it's broken."},  
-    {"role": "assistant", "content": "I require assistance in debugging my code, which is currently malfunctioning."}  
+# Define a few‑shot prompt as a list of messages  
+messages = [  
+    {"role": "system", "content": "You are an assistant that converts informal English sentences into polite, formal business language."},  
+    {"role": "user", "content": "Hey, can you send me the report?"},  
+    {"role": "assistant", "content": "Could you please forward the report to me at your earliest convenience?"},  
+    {"role": "user", "content": "I need those numbers ASAP."},  
+    {"role": "assistant", "content": "I would appreciate receiving the requested numbers as soon as possible."},  
+    # New query that should follow the demonstrated pattern  
+    {"role": "user", "content": "Give me an update on the project."}  
 ]  
 
-# The actual query the user wants rewritten  
-user_query = {"role": "user", "content": "What's the best way to learn Python quickly?"}  
-
-# Combine examples and the new query into the message list  
-messages = few_shot_examples + [user_query]  
-
-# Call the Chat Completion endpoint  
+# Call the Chat Completion API  
 response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",      # Choose a model that supports chat completions  
-    messages=messages,        # Provide the few‑shot context and user request  
-    temperature=0.2           # Low temperature for more deterministic output  
+    model="gpt-4o-mini",        # Choose a suitable model  
+    messages=messages,          # Pass the few‑shot prompt  
+    temperature=0.2,            # Low temperature for deterministic output  
+    max_tokens=100              # Limit the length of the reply  
 )  
 
-# Extract and print the assistant's formal rewrite  
-formal_output = response.choices[0].message.content.strip()  
-print(formal_output)   # Expected: "What is the most efficient methodology for acquiring proficiency in Python within a short timeframe?"  
+# Extract and print the assistant’s answer  
+formal_reply = response["choices"][0]["message"]["content"]  
+print(formal_reply)   # Expected: a polite, formal version of the last user query.  
 */
 
