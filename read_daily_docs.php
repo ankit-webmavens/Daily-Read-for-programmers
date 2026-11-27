@@ -1,203 +1,205 @@
 <?php
-// 2026-11-26 09:53:31
+// 2026-11-27 09:57:49
 
 /* PHP
-Topic: PDO Prepared Statements for Secure Database Access  
+PHP Topic: Generators (yield)
 
-Explanation:  
-Prepared statements separate SQL code from data, preventing malicious input from altering query structure.  
-They are compiled once by the database server, then executed multiple times with different parameters, improving performance.  
-Using named or positional placeholders makes the code more readable and easier to maintain.  
-PDO (PHP Data Objects) provides a uniform API for many database systems, with built‑in error handling.  
-When combined with password hashing, prepared statements form a strong foundation for safe user authentication.
+Explanation:
+Generators allow you to create iterators without the overhead of building an entire array in memory.  
+By using the yield keyword, a function can pause its execution and return a value each time it is iterated.  
+This is especially useful for processing large data sets, streaming files, or implementing lazy evaluation.  
+Generators maintain their own internal state, so the next call resumes right after the previous yield.  
+They provide a simple syntax compared to implementing the Iterator interface manually.
 
-Code example with comments:  
+Code Example with Comments:
+<?php
+function getNumbers($max) {
+    // Generator function that yields numbers from 1 up to $max
+    for ($i = 1; $i <= $max; $i++) {
+        // Pause execution and return the current number
+        yield $i;
+    }
+}
 
-<?php  
-// Data Source Name: specify driver, host, database, and charset  
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';  
-$username = 'dbuser';  
-$password = 'dbpass';  
-
-try {  
-    // Create a PDO instance and enable exceptions for errors  
-    $pdo = new PDO($dsn, $username, $password);  
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);  
-
-    // Prepare an INSERT statement using named placeholders  
-    $stmt = $pdo->prepare('INSERT INTO users (email, password) VALUES (:email, :password)');  
-
-    // Bind PHP variables to the placeholders  
-    $stmt->bindParam(':email', $email);  
-    $stmt->bindParam(':password', $hashedPassword);  
-
-    // Example data to insert  
-    $email = 'alice@example.com';  
-    $hashedPassword = password_hash('secret123', PASSWORD_BCRYPT);  
-
-    // Execute the prepared statement with the bound values  
-    $stmt->execute();  
-
-    echo 'User inserted successfully.';  
-} catch (PDOException $e) {  
-    // Handle any database errors gracefully  
-    echo 'Database error: ' . $e->getMessage();  
-}  
+// Using the generator in a foreach loop
+foreach (getNumbers(5) as $number) {
+    // Each iteration receives the next yielded value
+    echo $number . PHP_EOL; // Outputs 1 2 3 4 5 on separate lines
+}
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Automatic Dependency Injection
+Topic: Laravel Service Container and Dependency Injection
 
 Explanation:  
-The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection automatically. It resolves classes, interfaces, and their required dependencies at runtime, allowing you to type‑hint any class in a controller or other class constructor. By binding abstractions to concrete implementations, you can swap out implementations without changing the consuming code. The container also supports contextual bindings, singletons, and automatic resolution of primitive values via the config or environment. Using the container makes your application more modular, testable, and adheres to the inversion of control principle.
+The Laravel service container is a powerful tool for managing class dependencies and performing automatic injection. It resolves classes by reading type‑hints in constructors, method parameters, or controller actions, allowing you to decouple implementation from usage. By binding abstractions (interfaces) to concrete classes, you can swap implementations without changing the consuming code. The container also supports singleton bindings, contextual bindings, and automatic resolution of nested dependencies. Understanding the container is essential for writing clean, testable Laravel applications.
 
-Code example (a controller that receives a repository via automatic injection):
-
+Code example (app/Providers/AppServiceProvider.php):
 <?php
-namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
-use App\Repositories\UserRepositoryInterface;   // The abstraction we will inject
-
-class UserController extends Controller
-{
-    protected $users;   // Property to hold the repository instance
-
-    // Laravel will automatically resolve the concrete class bound to this interface
-    public function __construct(UserRepositoryInterface $users)
-    {
-        $this->users = $users;   // Assign the injected repository
-    }
-
-    // Example action that uses the repository
-    public function index()
-    {
-        $allUsers = $this->users->all();   // Calls the repository method
-        return view('users.index', compact('allUsers'));
-    }
-}
-
-// In a service provider you bind the interface to a concrete implementation
-<?php
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use App\Repositories\UserRepositoryInterface;
-use App\Repositories\EloquentUserRepository;
+use App\Contracts\PaymentGateway;          // Interface
+use App\Services\StripePaymentGateway;    // Concrete implementation
 
-class RepositoryServiceProvider extends ServiceProvider
+class AppServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        // Bind the interface to the Eloquent implementation as a singleton
-        $this->app->singleton(UserRepositoryInterface::class, function ($app) {
-            return new EloquentUserRepository();   // The concrete class
+        // Bind the interface to a concrete class so the container can resolve it
+        $this->app->bind(PaymentGateway::class, function ($app) {
+            // You could read configuration values here
+            $apiKey = config('services.stripe.secret');
+            return new StripePaymentGateway($apiKey);
+        });
+
+        // Example of a singleton binding (same instance used throughout request lifecycle)
+        $this->app->singleton('logger', function ($app) {
+            return new \Monolog\Logger('app');
         });
     }
+
+    public function boot()
+    {
+        //
+    }
 }
-?>
+
+// Usage in a controller (app/Http/Controllers/OrderController.php):
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Contracts\PaymentGateway;   // Type‑hint the interface
+
+class OrderController extends Controller
+{
+    protected $paymentGateway;
+
+    // The service container automatically injects the bound implementation
+    public function __construct(PaymentGateway $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
+
+    public function store()
+    {
+        // Use the injected payment gateway without caring about its concrete class
+        $this->paymentGateway->charge(1000, 'usd');
+        // ...
+    }
+}
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries
+MySQL Topic: Common Table Expressions (CTE) and Recursive Queries  
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs improve readability by allowing you to break complex queries into logical building blocks. When a CTE is defined with the RECURSIVE keyword, it can reference itself to produce hierarchical or iterative results, such as traversing a tree structure. Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly references the CTE until a termination condition is met. This feature is useful for generating series, processing organization charts, or handling bill‑of‑materials data without needing stored procedures.
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and improve query readability by allowing you to break complex logic into named subqueries.  
+MySQL supports both non‑recursive CTEs (single‑use subqueries) and recursive CTEs, which are useful for hierarchical data such as organization charts or tree structures.  
+Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself, terminating when the result set stops growing.  
+Using CTEs can also enable set‑based operations that would otherwise require procedural loops, leading to better performance and maintainability.  
 
-Code example (MySQL 8.0+):
--- Define a recursive CTE to generate a sequence of numbers from 1 to 10
-WITH RECURSIVE numbers AS (
-    SELECT 1 AS n                      -- Anchor member: start with 1
-    UNION ALL
-    SELECT n + 1 FROM numbers WHERE n < 10   -- Recursive member: add 1 while n < 10
-)
-SELECT n FROM numbers ORDER BY n;      -- Final query returns the generated series
+Code Example (recursive CTE to list an employee hierarchy):  
 
--- Example using a hierarchical employees table (id, name, manager_id)
-WITH RECURSIVE employee_hierarchy AS (
-    SELECT id, name, manager_id, 1 AS level
-    FROM employees
-    WHERE manager_id IS NULL               -- Anchor: top‑level managers
-    UNION ALL
-    SELECT e.id, e.name, e.manager_id, eh.level + 1
-    FROM employees e
-    JOIN employee_hierarchy eh ON e.manager_id = eh.id   -- Recursive join
-)
-SELECT id, name, manager_id, level
-FROM employee_hierarchy
-ORDER BY level, manager_id;            -- Result shows each employee with their depth in the hierarchy.
+WITH RECURSIVE employee_hierarchy AS (  
+    -- Anchor member: start with the top‑level manager (e.g., CEO with employee_id = 1)  
+    SELECT employee_id, manager_id, employee_name, 1 AS level  
+    FROM employees  
+    WHERE employee_id = 1  
+
+    UNION ALL  
+
+    -- Recursive member: find direct reports of the current level  
+    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1  
+    FROM employees e  
+    JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id  
+)  
+SELECT employee_id, manager_id, employee_name, level  
+FROM employee_hierarchy  
+ORDER BY level, manager_id;  
 */
 
 /* JavaScript
-JavaScript Closures  
+Topic: JavaScript Closures
 
-A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context.  
-It allows inner functions to remember and interact with variables defined in outer functions after the outer function has finished.  
-Closures are useful for data privacy, function factories, and maintaining state across multiple calls.  
-Because the inner function holds references to the outer variables, those variables are not garbage‑collected until the closure itself is no longer reachable.  
-Understanding closures is essential for mastering asynchronous code, callbacks, and module patterns in JavaScript.  
+Explanation:
+A closure is created when a function retains access to variables from its outer (enclosing) lexical scope, even after that outer function has finished executing. This allows inner functions to remember the environment in which they were created, enabling data encapsulation and private state. Closures are fundamental for patterns like function factories, module pattern, and handling asynchronous callbacks. They can also lead to memory leaks if references to large objects are unintentionally kept alive. Understanding closures helps write more predictable and maintainable code.
 
-// Example: function factory that creates a counter using a closure
-function createCounter(initialValue) {          // outer function with a private variable
-    let count = initialValue;                  // this variable is captured by the inner function
-    return function increment(step = 1) {      // inner function forms a closure over `count`
-        count += step;                         // modifies the captured variable
-        return count;                          // returns the updated count
+Code example with comments:
+function makeCounter() {
+    // `count` is a private variable, accessible only inside the returned function
+    let count = 0;
+    // The inner function forms a closure over `count`
+    return function() {
+        // Increment and return the current count each time the function is called
+        count++;
+        return count;
     };
 }
 
-// Using the closure
-const counterA = createCounter(0);  // counterA has its own private `count`
-console.log(counterA());            // 1
-console.log(counterA(5));           // 6
+// Create a new counter instance
+const counterA = makeCounter();
 
-const counterB = createCounter(10); // separate closure with its own `count`
-console.log(counterB());            // 11
-console.log(counterA());            // 7  (counterA retains its own state)
+console.log(counterA()); // 1
+console.log(counterA()); // 2
+console.log(counterA()); // 3
+
+// A separate counter has its own independent `count` variable
+const counterB = makeCounter();
+console.log(counterB()); // 1
+console.log(counterA()); // 4   (counterA continues where it left off)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Prompt Engineering for Few‑Shot Learning with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting lets you guide a language model by providing a handful of example interactions before the actual user query.  
-By placing the examples in the system or user messages, the model can infer the desired format, tone, or reasoning pattern.  
-This technique works well for tasks like data extraction, style conversion, or custom Q&A without fine‑tuning.  
-When using the Chat Completion endpoint, you construct a message list where the first few pairs are demonstrations, followed by the real request.  
-The model then treats the examples as a template and generates output consistent with them.  
+Few‑shot prompting lets a language model learn a new task from only a handful of examples embedded in the prompt. By carefully structuring the prompt—defining the role, providing clear instructions, and presenting input‑output pairs—you can guide the model to generate consistent, high‑quality responses without any fine‑tuning. This technique works well for classification, transformation, or extraction tasks where labeled data is scarce. The prompt should separate examples with delimiters and end with the new input, leaving the model to infer the pattern. Adjusting temperature, max_tokens, and stop sequences further refines the output behavior.
 
-Code example (Python, uses the openai library):  
+Code example (Python, using the openai library):  
 
 import os  
 import openai  
 
-# Load your API key from an environment variable or a config file  
+# Load your OpenAI API key from an environment variable  
 openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define a few demonstration exchanges that show the desired behavior  
-few_shot_messages = [  
-    {"role": "system", "content": "You are an assistant that extracts product names and prices from short descriptions."},  
-    {"role": "user", "content": "The new Acme smartwatch costs $199 and has a 48‑hour battery life."},  
-    {"role": "assistant", "content": "Product: Acme smartwatch\nPrice: $199"},  
-    {"role": "user", "content": "Our latest headphones are priced at $89 and feature noise cancellation."},  
-    {"role": "assistant", "content": "Product: headphones\nPrice: $89"}  
-]  
+def classify_sentiment(text: str) -> str:  
+    # Construct a few‑shot prompt with two labeled examples  
+    prompt = """You are a helpful assistant that classifies the sentiment of a sentence as Positive, Negative, or Neutral.  
 
-# The actual query we want the model to handle using the same pattern  
-user_query = {"role": "user", "content": "Check out the sleek XPhone Pro for $999 with a 6.7‑inch display."}  
+Example 1:  
+Sentence: I love the new design of the app!  
+Sentiment: Positive  
 
-# Combine the demonstrations with the new request  
-messages = few_shot_messages + [user_query]  
+Example 2:  
+Sentence: The update crashed my phone and ruined my day.  
+Sentiment: Negative  
 
-# Call the Chat Completion API  
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",          # choose a model that supports chat completions  
-    messages=messages,            # the full prompt including few‑shot examples  
-    temperature=0.0               # deterministic output for extraction tasks  
-)  
+Now classify the following sentence:  
+Sentence: """ + text + """  
+Sentiment:"""  
 
-# Print the assistant’s reply, which follows the demonstrated format  
-print(response.choices[0].message.content)   # Expected: Product: XPhone Pro\nPrice: $999  
+    response = openai.ChatCompletion.create(  
+        model="gpt-4o-mini",                 # lightweight model suitable for prompts  
+        messages=[{"role": "user", "content": prompt}],  
+        temperature=0.0,                     # deterministic output for classification  
+        max_tokens=10,                       # we only need the short label  
+        stop=["\n"]                          # stop at line break to avoid extra text  
+    )  
+
+    # Extract the model’s answer and strip whitespace  
+    sentiment = response.choices[0].message.content.strip()  
+    return sentiment  
+
+# Example usage  
+if __name__ == "__main__":  
+    test_sentence = "The customer service was okay, not great but not bad either."  
+    print(f"Sentence: {test_sentence}")  
+    print(f"Predicted Sentiment: {classify_sentiment(test_sentence)}")  
 */
 
