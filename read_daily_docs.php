@@ -1,64 +1,75 @@
 <?php
-// 2026-11-27 09:57:49
+// 2026-11-28 09:12:19
 
 /* PHP
-PHP Topic: Generators (yield)
+PHP PDO Prepared Statements  
 
-Explanation:
-Generators allow you to create iterators without the overhead of building an entire array in memory.  
-By using the yield keyword, a function can pause its execution and return a value each time it is iterated.  
-This is especially useful for processing large data sets, streaming files, or implementing lazy evaluation.  
-Generators maintain their own internal state, so the next call resumes right after the previous yield.  
-They provide a simple syntax compared to implementing the Iterator interface manually.
+Prepared statements separate SQL code from data, preventing SQL injection by sending the query structure to the database first and then binding parameters later.  
+They improve performance when the same query is executed multiple times with different values.  
+Using PDO you can work with many database types (MySQL, PostgreSQL, SQLite) through a consistent interface.  
+Parameters are bound by name or position, and PDO handles proper quoting and escaping automatically.  
+If an error occurs, PDO can throw exceptions, making debugging easier.  
 
-Code Example with Comments:
 <?php
-function getNumbers($max) {
-    // Generator function that yields numbers from 1 up to $max
-    for ($i = 1; $i <= $max; $i++) {
-        // Pause execution and return the current number
-        yield $i;
-    }
-}
+// Create a new PDO instance (replace DSN, username, password with your own values)
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
+$pdo = new PDO($dsn, $username, $password, $options);
 
-// Using the generator in a foreach loop
-foreach (getNumbers(5) as $number) {
-    // Each iteration receives the next yielded value
-    echo $number . PHP_EOL; // Outputs 1 2 3 4 5 on separate lines
-}
+// Prepare an INSERT statement with named placeholders
+$stmt = $pdo->prepare('INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())');
+
+// Bind values to the placeholders
+$username = 'alice';
+$email = 'alice@example.com';
+$stmt->bindParam(':username', $username, PDO::PARAM_STR);
+$stmt->bindParam(':email', $email, PDO::PARAM_STR);
+
+// Execute the statement
+$stmt->execute();
+
+// Retrieve the ID of the newly inserted row
+$newUserId = $pdo->lastInsertId();
+echo "New user inserted with ID: $newUserId\n";
 ?>
 */
 
 /* Laravel
 Topic: Laravel Service Container and Dependency Injection
 
-Explanation:  
-The Laravel service container is a powerful tool for managing class dependencies and performing automatic injection. It resolves classes by reading type‑hints in constructors, method parameters, or controller actions, allowing you to decouple implementation from usage. By binding abstractions (interfaces) to concrete classes, you can swap implementations without changing the consuming code. The container also supports singleton bindings, contextual bindings, and automatic resolution of nested dependencies. Understanding the container is essential for writing clean, testable Laravel applications.
+Explanation:
+The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection automatically. It resolves classes out of the container, injecting their required dependencies without manual instantiation. This promotes loose coupling and makes testing easier by allowing you to swap implementations. You can bind interfaces to concrete classes, define singletons, and even use contextual binding for specific scenarios. When a class is resolved, Laravel inspects its constructor and provides the needed objects from the container.
 
-Code example (app/Providers/AppServiceProvider.php):
+Code Example (app/Providers/AppServiceProvider.php):
 <?php
-
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;          // Interface
-use App\Services\StripePaymentGateway;    // Concrete implementation
+use App\Contracts\PaymentGateway;
+use App\Services\StripePaymentGateway;
+use App\Services\PaypalPaymentGateway;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        // Bind the interface to a concrete class so the container can resolve it
-        $this->app->bind(PaymentGateway::class, function ($app) {
-            // You could read configuration values here
-            $apiKey = config('services.stripe.secret');
-            return new StripePaymentGateway($apiKey);
-        });
+        // Bind the PaymentGateway interface to Stripe implementation by default
+        $this->app->bind(PaymentGateway::class, StripePaymentGateway::class);
 
-        // Example of a singleton binding (same instance used throughout request lifecycle)
+        // Example of a singleton binding – the same instance will be reused
         $this->app->singleton('logger', function ($app) {
             return new \Monolog\Logger('app');
         });
+
+        // Contextual binding: when OrderController needs PaymentGateway, use PayPal
+        $this->app->when(\App\Http\Controllers\OrderController::class)
+                  ->needs(PaymentGateway::class)
+                  ->give(PaypalPaymentGateway::class);
     }
 
     public function boot()
@@ -66,140 +77,145 @@ class AppServiceProvider extends ServiceProvider
         //
     }
 }
+?>
 
-// Usage in a controller (app/Http/Controllers/OrderController.php):
+Code Example (app/Http/Controllers/OrderController.php):
 <?php
-
 namespace App\Http\Controllers;
 
-use App\Contracts\PaymentGateway;   // Type‑hint the interface
+use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
     protected $paymentGateway;
 
-    // The service container automatically injects the bound implementation
+    // Laravel injects the appropriate PaymentGateway implementation automatically
     public function __construct(PaymentGateway $paymentGateway)
     {
         $this->paymentGateway = $paymentGateway;
     }
 
-    public function store()
+    public function store(Request $request)
     {
-        // Use the injected payment gateway without caring about its concrete class
-        $this->paymentGateway->charge(1000, 'usd');
-        // ...
+        // Use the injected payment gateway to process a payment
+        $amount = $request->input('amount');
+        $this->paymentGateway->charge($amount);
+
+        return response()->json(['status' => 'payment processed']);
     }
 }
+?>
 */
 
 /* MySQL
-MySQL Topic: Common Table Expressions (CTE) and Recursive Queries  
+Topic: Common Table Expressions (CTE) and Recursive Queries
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and improve query readability by allowing you to break complex logic into named subqueries.  
-MySQL supports both non‑recursive CTEs (single‑use subqueries) and recursive CTEs, which are useful for hierarchical data such as organization charts or tree structures.  
-Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself, terminating when the result set stops growing.  
-Using CTEs can also enable set‑based operations that would otherwise require procedural loops, leading to better performance and maintainability.  
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and can improve readability by breaking complex queries into logical parts. MySQL 8.0 and later support both non‑recursive and recursive CTEs. Recursive CTEs are useful for traversing hierarchical data such as organizational charts or tree structures. The recursion stops when the anchor query no longer produces rows, preventing infinite loops.
 
-Code Example (recursive CTE to list an employee hierarchy):  
+Code Example (with comments):
+WITH RECURSIVE OrgChart AS (
+    -- Anchor member: select the top‑level manager(s)
+    SELECT 
+        employee_id,
+        manager_id,
+        employee_name,
+        1 AS level
+    FROM employees
+    WHERE manager_id IS NULL
 
-WITH RECURSIVE employee_hierarchy AS (  
-    -- Anchor member: start with the top‑level manager (e.g., CEO with employee_id = 1)  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
-    FROM employees  
-    WHERE employee_id = 1  
+    UNION ALL
 
-    UNION ALL  
-
-    -- Recursive member: find direct reports of the current level  
-    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1  
-    FROM employees e  
-    JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id  
-)  
-SELECT employee_id, manager_id, employee_name, level  
-FROM employee_hierarchy  
-ORDER BY level, manager_id;  
+    -- Recursive member: join each manager to their direct reports
+    SELECT 
+        e.employee_id,
+        e.manager_id,
+        e.employee_name,
+        oc.level + 1 AS level
+    FROM employees e
+    INNER JOIN OrgChart oc ON e.manager_id = oc.employee_id
+)
+SELECT 
+    employee_id,
+    manager_id,
+    employee_name,
+    level
+FROM OrgChart
+ORDER BY level, manager_id, employee_id;
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic Name: Closures in JavaScript
 
 Explanation:
-A closure is created when a function retains access to variables from its outer (enclosing) lexical scope, even after that outer function has finished executing. This allows inner functions to remember the environment in which they were created, enabling data encapsulation and private state. Closures are fundamental for patterns like function factories, module pattern, and handling asynchronous callbacks. They can also lead to memory leaks if references to large objects are unintentionally kept alive. Understanding closures helps write more predictable and maintainable code.
+A closure is created when an inner function accesses variables from its outer (enclosing) function after the outer function has finished executing. This allows the inner function to retain a reference to the outer scope’s variables, enabling data privacy and function factories. Closures are fundamental for patterns like module encapsulation and partial application. Because the referenced variables live on the heap, they are not garbage‑collected until all closures that reference them are also discarded. Understanding closures helps avoid common pitfalls such as unintended sharing of mutable state.
 
-Code example with comments:
-function makeCounter() {
-    // `count` is a private variable, accessible only inside the returned function
-    let count = 0;
-    // The inner function forms a closure over `count`
+Code Example:
+// outerFunction returns an inner function that remembers `counter`
+function outerFunction() {
+    // `counter` is scoped to outerFunction
+    let counter = 0;
+
+    // inner function forms a closure over `counter`
     return function() {
-        // Increment and return the current count each time the function is called
-        count++;
-        return count;
+        // each call increments the private `counter`
+        counter++;
+        console.log('Current count:', counter);
     };
 }
 
-// Create a new counter instance
-const counterA = makeCounter();
+// Create two independent counters using closures
+const incrementA = outerFunction(); // first closure with its own `counter`
+const incrementB = outerFunction(); // second closure with a separate `counter`
 
-console.log(counterA()); // 1
-console.log(counterA()); // 2
-console.log(counterA()); // 3
-
-// A separate counter has its own independent `count` variable
-const counterB = makeCounter();
-console.log(counterB()); // 1
-console.log(counterA()); // 4   (counterA continues where it left off)
+incrementA(); // Output: Current count: 1
+incrementA(); // Output: Current count: 2
+incrementB(); // Output: Current count: 1 (independent from incrementA)
 */
 
 /* AI
-Topic: Prompt Engineering for Few‑Shot Learning with OpenAI’s Chat Completion API  
+Topic: Prompt Engineering for Few‑Shot Learning with GPT‑4
 
-Explanation:  
-Few‑shot prompting lets a language model learn a new task from only a handful of examples embedded in the prompt. By carefully structuring the prompt—defining the role, providing clear instructions, and presenting input‑output pairs—you can guide the model to generate consistent, high‑quality responses without any fine‑tuning. This technique works well for classification, transformation, or extraction tasks where labeled data is scarce. The prompt should separate examples with delimiters and end with the new input, leaving the model to infer the pattern. Adjusting temperature, max_tokens, and stop sequences further refines the output behavior.
+Explanation:
+Few‑shot prompting lets you teach a language model new tasks by providing a few example input‑output pairs directly in the prompt. The model infers the pattern and applies it to new inputs without any parameter updates. Careful selection of examples, clear separators, and explicit instructions improve reliability. This technique works well for classification, transformation, or reasoning tasks where labeled data is scarce. By adjusting the number and order of demos you can control the trade‑off between precision and speed.
 
-Code example (Python, using the openai library):  
+Code example (Python, OpenAI API):
 
-import os  
-import openai  
+import os
+import openai
 
-# Load your OpenAI API key from an environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Load your API key from environment variable for security
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def classify_sentiment(text: str) -> str:  
-    # Construct a few‑shot prompt with two labeled examples  
-    prompt = """You are a helpful assistant that classifies the sentiment of a sentence as Positive, Negative, or Neutral.  
+# Define a few‑shot prompt for sentiment classification
+prompt = """Classify the sentiment of the given sentence as Positive, Negative, or Neutral.
 
-Example 1:  
-Sentence: I love the new design of the app!  
-Sentiment: Positive  
+Example 1:
+Sentence: "I love the new design of the app."
+Sentiment: Positive
 
-Example 2:  
-Sentence: The update crashed my phone and ruined my day.  
-Sentiment: Negative  
+Example 2:
+Sentence: "The update caused many crashes."
+Sentiment: Negative
 
-Now classify the following sentence:  
-Sentence: """ + text + """  
-Sentiment:"""  
+Example 3:
+Sentence: "The tutorial was okay, nothing special."
+Sentiment: Neutral
 
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",                 # lightweight model suitable for prompts  
-        messages=[{"role": "user", "content": prompt}],  
-        temperature=0.0,                     # deterministic output for classification  
-        max_tokens=10,                       # we only need the short label  
-        stop=["\n"]                          # stop at line break to avoid extra text  
-    )  
+Now classify:
+Sentence: "Your customer support was very helpful."
+Sentiment:"""
 
-    # Extract the model’s answer and strip whitespace  
-    sentiment = response.choices[0].message.content.strip()  
-    return sentiment  
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",          # lightweight GPT‑4 variant
+    messages=[{"role": "user", "content": prompt}],
+    temperature=0.0,               # deterministic output for classification
+    max_tokens=10,                 # we only need the short label
+)
 
-# Example usage  
-if __name__ == "__main__":  
-    test_sentence = "The customer service was okay, not great but not bad either."  
-    print(f"Sentence: {test_sentence}")  
-    print(f"Predicted Sentiment: {classify_sentiment(test_sentence)}")  
+# Extract and print the model's answer
+sentiment = response.choices[0].message.content.strip()
+print("Predicted sentiment:", sentiment)
 */
 
